@@ -1,0 +1,168 @@
+{
+  "projectType": "ai-ml",
+  "projectName": "MaxDiffusion",
+  "projectDescription": "High-performance latent diffusion models in pure Python/JAX for training and inference on XLA devices including Cloud TPUs and GPUs",
+  "theme": "aspen",
+  "primaryColor": "#4285F4",
+  "lightColor": "#669DF6",
+  "darkColor": "#1A73E8",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/models",
+              "concepts/parallelism",
+              "concepts/attention-mechanisms"
+            ]
+          },
+          {
+            "group": "Training",
+            "pages": [
+              "training/overview",
+              "training/stable-diffusion",
+              "training/sdxl",
+              "training/flux",
+              "training/wan",
+              "training/dreambooth"
+            ]
+          },
+          {
+            "group": "Inference",
+            "pages": [
+              "inference/overview",
+              "inference/stable-diffusion",
+              "inference/sdxl",
+              "inference/flux",
+              "inference/wan",
+              "inference/ltx-video",
+              "inference/controlnet"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/lora",
+              "advanced/multi-lora",
+              "advanced/quantization",
+              "advanced/profiling",
+              "advanced/checkpointing"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/single-host",
+              "deployment/multihost",
+              "deployment/xpk",
+              "deployment/dgx-spark"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/optimization",
+              "guides/data-preprocessing",
+              "guides/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Training Scripts",
+            "pages": [
+              "api/train",
+              "api/train-sdxl",
+              "api/train-flux",
+              "api/train-wan"
+            ]
+          },
+          {
+            "group": "Generation Scripts",
+            "pages": [
+              "api/generate",
+              "api/generate-sdxl",
+              "api/generate-flux",
+              "api/generate-wan",
+              "api/generate-ltx-video"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/unet",
+              "api/models/vae",
+              "api/models/transformer",
+              "api/models/controlnet"
+            ]
+          },
+          {
+            "group": "Pipelines",
+            "pages": [
+              "api/pipelines/stable-diffusion",
+              "api/pipelines/sdxl",
+              "api/pipelines/flux",
+              "api/pipelines/wan"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "api/config/base-config",
+              "api/config/parallelism",
+              "api/config/scheduler"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Stable Diffusion 1.x, 2.x, and XL training and inference",
+    "Flux Dev and Schnell support with LoRA",
+    "Wan 2.1/2.2 video generation (text2vid and img2vid)",
+    "LTX-Video generation",
+    "ControlNet support for SD 1.4 and SDXL",
+    "Multi-LoRA loading and inference",
+    "Flash attention and fused attention kernels",
+    "FSDP, data, and tensor parallelism for TPU Pods",
+    "Dreambooth fine-tuning",
+    "Mixed precision training with bfloat16",
+    "Quantization support",
+    "XLA compiler optimizations for TPU and GPU"
+  ],
+  "publicApiSurface": [
+    "train.py - Stable Diffusion 2 base training",
+    "train_sdxl.py - SDXL training",
+    "train_flux.py - Flux fine-tuning",
+    "train_wan.py - Wan 2.1 video training",
+    "generate.py - SD 2 base inference",
+    "generate_sdxl.py - SDXL inference with LoRA",
+    "generate_flux.py - Flux Dev/Schnell inference",
+    "generate_wan.py - Wan text2vid/img2vid generation",
+    "generate_ltx_video.py - LTX-Video generation",
+    "FlaxStableDiffusionPipeline",
+    "FlaxStableDiffusionXLPipeline",
+    "FlaxControlNetPipeline",
+    "FlaxUNet2DConditionModel",
+    "FlaxAutoencoderKL",
+    "FlaxFluxTransformer2DModel",
+    "ConfigMixin - Configuration utilities",
+    "Scheduler classes (FlaxDDIMScheduler, FlaxEulerDiscreteScheduler, etc.)"
+  ]
+}
