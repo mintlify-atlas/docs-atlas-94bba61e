@@ -1,0 +1,391 @@
+---
+title: train.py
+description: Train Stable Diffusion 2.x models on TPU and GPU
+---
+
+## Overview
+
+The `train.py` script trains Stable Diffusion 2.x models using the MaxDiffusion framework. It supports distributed training across TPU pods and GPU clusters with configurable parallelism strategies.
+
+## Command-line usage
+
+```bash
+python -m src.maxdiffusion.train src/maxdiffusion/configs/base21.yml [OPTIONS]
+```
+
+### Basic example
+
+```bash
+export LIBTPU_INIT_ARGS=""
+python -m src.maxdiffusion.train \
+  src/maxdiffusion/configs/base21.yml \
+  run_name="my_run" \
+  jax_cache_dir=gs://your-bucket/cache_dir \
+  activations_dtype=float32 \
+  weights_dtype=float32 \
+  per_device_batch_size=2 \
+  precision=DEFAULT \
+  dataset_save_location=/tmp/my_dataset/ \
+  output_dir=gs://your-bucket/ \
+  attention=flash
+```
+
+## Configuration parameters
+
+### Run configuration
+
+<ParamField path="run_name" type="string" required>
+  Name for this training run. Used for organizing outputs and metrics.
+</ParamField>
+
+<ParamField path="base_output_directory" type="string">
+  GCS bucket path for outputs (e.g., `gs://my-bucket/`). Checkpoints and metrics will be saved here.
+</ParamField>
+
+<ParamField path="output_dir" type="string" default="sd-model-finetuned">
+  Local or GCS directory for model outputs.
+</ParamField>
+
+### Model configuration
+
+<ParamField path="pretrained_model_name_or_path" type="string" default="stabilityai/stable-diffusion-2-1">
+  HuggingFace model identifier or local path to pretrained model.
+</ParamField>
+
+<ParamField path="unet_checkpoint" type="string" default="">
+  Path to a specific UNet checkpoint to load.
+</ParamField>
+
+<ParamField path="revision" type="string" default="bf16">
+  Model revision/branch to use from HuggingFace.
+</ParamField>
+
+<ParamField path="weights_dtype" type="string" default="float32">
+  Data type for model weights. Options: `float32`, `bfloat16`.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for layer activations. Options: `float32`, `bfloat16`.
+</ParamField>
+
+<ParamField path="precision" type="string" default="DEFAULT">
+  JAX precision for matmul and conv operations. Options: `DEFAULT`, `HIGH`, `HIGHEST`.
+</ParamField>
+
+<ParamField path="from_pt" type="boolean" default={false}>
+  Load weights from PyTorch format.
+</ParamField>
+
+<ParamField path="train_new_unet" type="boolean" default={false}>
+  If true, randomly initialize UNet weights to train from scratch. Otherwise, load from pretrained model.
+</ParamField>
+
+### Attention configuration
+
+<ParamField path="attention" type="string" default="dot_product">
+  Attention mechanism to use. Options: `dot_product`, `flash`.
+</ParamField>
+
+<ParamField path="split_head_dim" type="boolean" default={true}>
+  Whether to split attention head dimensions for sharding.
+</ParamField>
+
+<ParamField path="attention_sharding_uniform" type="boolean" default={true}>
+  Use uniform sequence sharding for both self and cross attention.
+</ParamField>
+
+<ParamField path="mask_padding_tokens" type="boolean" default={true}>
+  Pass segment IDs to attention to avoid attending to padding tokens. Improves quality when padding is significant.
+</ParamField>
+
+<ParamField path="flash_block_sizes" type="object" default={{}}>
+  Custom block sizes for flash attention.
+</ParamField>
+
+### Text encoder configuration
+
+<ParamField path="train_text_encoder" type="boolean" default={false}>
+  Enable training of the text encoder along with UNet.
+</ParamField>
+
+<ParamField path="text_encoder_learning_rate" type="number" default={4.25e-6}>
+  Learning rate for text encoder when `train_text_encoder` is true.
+</ParamField>
+
+### Training hyperparameters
+
+<ParamField path="learning_rate" type="number" default={1e-7}>
+  Learning rate for the optimizer.
+</ParamField>
+
+<ParamField path="scale_lr" type="boolean" default={false}>
+  Scale learning rate by the number of GPUs/TPUs and batch size.
+</ParamField>
+
+<ParamField path="max_train_steps" type="number" default={800}>
+  Maximum number of training steps. Takes priority over `num_train_epochs`.
+</ParamField>
+
+<ParamField path="max_train_samples" type="number" default={-1}>
+  Maximum number of training samples to use. -1 means use all samples.
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="number" default={1}>
+  Batch size per device.
+</ParamField>
+
+<ParamField path="warmup_steps_fraction" type="number" default={0.0}>
+  Fraction of total steps to use for learning rate warmup.
+</ParamField>
+
+<ParamField path="seed" type="number" default={0}>
+  Random seed for reproducibility.
+</ParamField>
+
+### Optimizer parameters
+
+<ParamField path="adam_b1" type="number" default={0.9}>
+  Exponential decay rate for first moment estimates.
+</ParamField>
+
+<ParamField path="adam_b2" type="number" default={0.999}>
+  Exponential decay rate for second moment estimates.
+</ParamField>
+
+<ParamField path="adam_eps" type="number" default={1e-8}>
+  Small constant for numerical stability.
+</ParamField>
+
+<ParamField path="adam_weight_decay" type="number" default={1e-2}>
+  Weight decay coefficient for AdamW optimizer.
+</ParamField>
+
+<ParamField path="max_grad_norm" type="number" default={1.0}>
+  Maximum gradient norm for gradient clipping.
+</ParamField>
+
+### Loss and noise schedule
+
+<ParamField path="snr_gamma" type="number" default={-1.0}>
+  SNR-weighted loss gamma parameter. Set to -1.0 to disable.
+</ParamField>
+
+<ParamField path="timestep_bias" type="object">
+  Configuration for biasing timestep sampling during training.
+  
+  - `strategy`: Bias strategy. Options: `none`, `earlier`, `later`, `range`
+  - `multiplier`: Bias multiplier (2.0 doubles weight, 0.5 halves it)
+  - `begin`: Start timestep for range strategy
+  - `end`: End timestep for range strategy
+  - `portion`: Fraction of timesteps to bias
+</ParamField>
+
+<ParamField path="diffusion_scheduler_config" type="object">
+  Override parameters for the diffusion scheduler.
+  
+  - `_class_name`: Scheduler class name
+  - `prediction_type`: Prediction type (e.g., `v_prediction`, `epsilon`)
+  - `rescale_zero_terminal_snr`: Whether to rescale zero terminal SNR
+  - `timestep_spacing`: Timestep spacing strategy
+</ParamField>
+
+### Dataset configuration
+
+<ParamField path="dataset_name" type="string" default="diffusers/pokemon-gpt4-captions">
+  HuggingFace dataset identifier.
+</ParamField>
+
+<ParamField path="train_data_dir" type="string" default="">
+  Local directory containing training data. Either this or `dataset_name` must be set.
+</ParamField>
+
+<ParamField path="train_split" type="string" default="train">
+  Dataset split to use for training.
+</ParamField>
+
+<ParamField path="dataset_type" type="string" default="tf">
+  Dataset format type.
+</ParamField>
+
+<ParamField path="cache_latents_text_encoder_outputs" type="boolean" default={true}>
+  Cache image latents and text encoder outputs to reduce memory and speed up training. Only applies to small datasets that fit in memory.
+</ParamField>
+
+<ParamField path="dataset_save_location" type="string" default="/tmp/pokemon-gpt4-captions_sd21">
+  Path to save transformed dataset when caching is enabled.
+</ParamField>
+
+<ParamField path="image_column" type="string" default="image">
+  Name of the image column in the dataset.
+</ParamField>
+
+<ParamField path="caption_column" type="string" default="text">
+  Name of the caption column in the dataset.
+</ParamField>
+
+<ParamField path="resolution" type="number" default={768}>
+  Image resolution for training.
+</ParamField>
+
+<ParamField path="center_crop" type="boolean" default={false}>
+  Whether to center crop images before resizing.
+</ParamField>
+
+<ParamField path="random_flip" type="boolean" default={false}>
+  Whether to randomly flip images horizontally.
+</ParamField>
+
+<ParamField path="enable_data_shuffling" type="boolean" default={true}>
+  Shuffle the dataset during training.
+</ParamField>
+
+<ParamField path="hf_access_token" type="string" default="">
+  HuggingFace access token for private datasets or models.
+</ParamField>
+
+### Parallelism and sharding
+
+<ParamField path="hardware" type="string" default="tpu">
+  Hardware type. Options: `tpu`, `gpu`.
+</ParamField>
+
+<ParamField path="mesh_axes" type="array" default={["data", "fsdp", "context", "tensor"]}>
+  Logical mesh axes for parallelism.
+</ParamField>
+
+<ParamField path="dcn_data_parallelism" type="number" default={-1}>
+  Data parallelism across DCN. -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="dcn_fsdp_parallelism" type="number" default={1}>
+  FSDP parallelism across DCN.
+</ParamField>
+
+<ParamField path="dcn_tensor_parallelism" type="number" default={1}>
+  Tensor parallelism across DCN.
+</ParamField>
+
+<ParamField path="ici_data_parallelism" type="number" default={-1}>
+  Data parallelism within ICI. -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_fsdp_parallelism" type="number" default={1}>
+  FSDP parallelism within ICI.
+</ParamField>
+
+<ParamField path="ici_tensor_parallelism" type="number" default={1}>
+  Tensor parallelism within ICI.
+</ParamField>
+
+### Checkpointing
+
+<ParamField path="checkpoint_every" type="number" default={-1}>
+  Save checkpoint every N samples. -1 disables checkpointing.
+</ParamField>
+
+<ParamField path="enable_single_replica_ckpt_restoring" type="boolean" default={false}>
+  Enable one replica to read checkpoint and broadcast to others.
+</ParamField>
+
+### Metrics and logging
+
+<ParamField path="write_metrics" type="boolean" default={true}>
+  Save metrics such as loss and TFLOPS to GCS.
+</ParamField>
+
+<ParamField path="gcs_metrics" type="boolean" default={true}>
+  Write metrics to GCS.
+</ParamField>
+
+<ParamField path="metrics_file" type="string" default="">
+  Local file path for storing scalar metrics (for testing).
+</ParamField>
+
+<ParamField path="log_period" type="number" default={10000000000}>
+  Tensorboard flush period.
+</ParamField>
+
+### Profiling
+
+<ParamField path="enable_profiler" type="boolean" default={false}>
+  Enable JAX profiler.
+</ParamField>
+
+<ParamField path="skip_first_n_steps_for_profiler" type="number" default={1}>
+  Skip first N steps when profiling to exclude compilation.
+</ParamField>
+
+<ParamField path="profiler_steps" type="number" default={5}>
+  Number of steps to profile.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Prompt for test image generation during training.
+</ParamField>
+
+<ParamField path="negative_prompt" type="string" default="purple, red">
+  Negative prompt for guidance.
+</ParamField>
+
+<ParamField path="guidance_scale" type="number" default={7.5}>
+  Classifier-free guidance scale.
+</ParamField>
+
+<ParamField path="num_inference_steps" type="number" default={30}>
+  Number of denoising steps for test generation.
+</ParamField>
+
+## Expected outputs
+
+The training script produces the following outputs:
+
+### Checkpoints
+
+When `checkpoint_every` is set, model checkpoints are saved to:
+```
+{base_output_directory}/{run_name}/checkpoints/
+```
+
+Checkpoints include:
+- Model weights (UNet and optionally text encoder)
+- Optimizer state
+- Training step information
+
+### Metrics
+
+Training metrics are saved to:
+```
+{base_output_directory}/{run_name}/metrics/
+```
+
+Metrics include:
+- Training loss
+- Learning rate
+- TFLOPS per device
+- Step time
+
+### Tensorboard logs
+
+Tensorboard logs are written to:
+```
+{base_output_directory}/{run_name}/tensorboard/
+```
+
+View logs with:
+```bash
+tensorboard --logdir=gs://your-bucket/{run_name}/tensorboard/
+```
+
+### Training output
+
+During training, you'll see output like:
+```
+***** Running training *****
+Instantaneous batch size per device = 2
+Total train batch size (w. parallel & distributed) = 8
+Total optimization steps = 800
+completed step: 0, seconds: 2.5, TFLOP/s/device: 45.2, loss: 0.234
+completed step: 1, seconds: 1.2, TFLOP/s/device: 94.3, loss: 0.198
+```

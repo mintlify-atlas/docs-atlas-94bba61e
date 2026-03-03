@@ -1,0 +1,279 @@
+---
+title: LTX Video generation
+description: Generate high-quality videos with LTX-Video text-to-video and image-to-video models
+---
+
+LTX-Video is a 13B parameter latent diffusion model for video generation, supporting both text-to-video and image-to-video with flexible conditioning.
+
+## Installation
+
+Convert PyTorch weights to JAX format before running inference.
+
+### Convert weights
+
+```bash
+cd src/maxdiffusion/models/ltx_video/utils
+python convert_torch_weights_to_jax.py \
+  --ckpt_path /path/to/weights \
+  --transformer_config_path ../ltxv-13B.json
+```
+
+This creates JAX-compatible weights in the specified directory.
+
+## Quick start
+
+<CodeGroup>
+
+```bash Text-to-video
+python src/maxdiffusion/generate_ltx_video.py \
+  src/maxdiffusion/configs/ltx_video.yml \
+  output_dir="/path/to/weights" \
+  config_path="src/maxdiffusion/models/ltx_video/ltxv-13B.json"
+```
+
+```bash Image-to-video
+python src/maxdiffusion/generate_ltx_video.py \
+  src/maxdiffusion/configs/ltx_video.yml \
+  output_dir="/path/to/weights" \
+  config_path="src/maxdiffusion/models/ltx_video/ltxv-13B.json"
+```
+
+</CodeGroup>
+
+## Image-to-video generation
+
+LTX-Video supports conditioning on input images for video animation.
+
+### Configure conditioning
+
+Add conditioning parameters to `ltx_video.yml`:
+
+```yaml
+conditioning_media_paths: ["/path/to/image.jpg"]
+conditioning_start_frames: [0]
+conditioning_strengths: [1.0]
+```
+
+Parameters:
+- `conditioning_media_paths`: List of image paths to condition on
+- `conditioning_start_frames`: Frame indices for each conditioning image
+- `conditioning_strengths`: Influence strength (0.0-1.0) for each image
+
+### Run I2V inference
+
+```bash
+python src/maxdiffusion/generate_ltx_video.py \
+  src/maxdiffusion/configs/ltx_video.yml \
+  output_dir="/path/to/weights" \
+  config_path="src/maxdiffusion/models/ltx_video/ltxv-13B.json"
+```
+
+The model generates video frames conditioned on the input image(s).
+
+## Parameters
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `prompt` | Text description of video content | Required |
+| `height` | Video height in pixels | 512 |
+| `width` | Video width in pixels | 768 |
+| `num_frames` | Number of frames to generate | 97 |
+| `num_inference_steps` | Denoising steps | 40 |
+| `frame_rate` | Output video FPS | 25 |
+| `seed` | Random seed for reproducibility | 0 |
+| `conditioning_media_paths` | List of conditioning image paths | None |
+| `conditioning_start_frames` | Frame indices for conditioning | [0] |
+| `conditioning_strengths` | Conditioning influence strengths | [1.0] |
+
+## Prompt enhancement
+
+LTX-Video includes automatic prompt enhancement for short prompts.
+
+### Configure enhancement
+
+```yaml
+prompt_enhancement_words_threshold: 20
+```
+
+When prompt word count is below the threshold, the model automatically enhances the prompt for better results.
+
+Set to `0` to disable enhancement:
+
+```yaml
+prompt_enhancement_words_threshold: 0
+```
+
+## Resolution and padding
+
+LTX-Video automatically pads input dimensions to multiples of 32 for optimal processing.
+
+### Automatic padding
+
+The pipeline calculates padded dimensions (`generate_ltx_video.py:178-181`):
+
+```python
+height_padded = ((config.height - 1) // 32 + 1) * 32
+width_padded = ((config.width - 1) // 32 + 1) * 32
+num_frames_padded = ((config.num_frames - 2) // 8 + 1) * 8 + 1
+padding = calculate_padding(config.height, config.width, height_padded, width_padded)
+```
+
+After generation, padding is removed to return the requested resolution.
+
+## Multi-scale pipeline
+
+LTX-Video supports multi-scale generation for higher quality outputs.
+
+### Enable multi-scale
+
+```yaml
+pipeline_type: "multi-scale"
+```
+
+The multi-scale pipeline generates video at multiple resolutions and combines them for improved quality.
+
+## Output format
+
+Videos are saved to `outputs/YYYY-MM-DD/` directory:
+
+- **Videos**: `video_output_{i}_{prompt}_{H}x{W}x{F}_{index}.mp4`
+- **Images** (single frame): `image_output_{i}_{prompt}_{H}x{W}x{F}_{index}.png`
+- Format: H.264 MP4 for videos, PNG for images
+
+## Implementation details
+
+The LTX pipeline (`generate_ltx_video.py:src/maxdiffusion/generate_ltx_video.py`) implements:
+
+### Conditioning preparation
+
+Prepare conditioning items from input images (`generate_ltx_video.py:99-120`):
+
+```python
+def prepare_conditioning(
+    conditioning_media_paths: List[str],
+    conditioning_strengths: List[float],
+    conditioning_start_frames: List[int],
+    height: int,
+    width: int,
+    padding: tuple[int, int, int, int],
+) -> Optional[List[ConditioningItem]]:
+  conditioning_items = []
+  for path, strength, start_frame in zip(conditioning_media_paths, conditioning_strengths, conditioning_start_frames):
+    media_tensor = load_media_file(
+        media_path=path,
+        height=height,
+        width=width,
+        max_frames=1,
+        padding=padding,
+        just_crop=True,
+    )
+    conditioning_items.append(ConditioningItem(media_tensor, start_frame, strength))
+  return conditioning_items
+```
+
+### Image preprocessing
+
+Input images are preprocessed with cropping, resizing, and CRF compression (`generate_ltx_video.py:50-96`):
+
+```python
+def load_image_to_tensor_with_resize_and_crop(
+    image_input: Union[str, Image.Image],
+    target_height: int = 512,
+    target_width: int = 768,
+    just_crop: bool = False,
+) -> torch.Tensor:
+  # Load image
+  if isinstance(image_input, str):
+    image = Image.open(image_input).convert("RGB")
+  else:
+    image = image_input
+  
+  # Aspect ratio crop
+  aspect_ratio_target = target_width / target_height
+  aspect_ratio_frame = input_width / input_height
+  # ... crop logic ...
+  
+  # Optional resize
+  if not just_crop:
+    image = image.resize((target_width, target_height))
+  
+  # Convert to tensor and apply Gaussian blur
+  frame_tensor = TVF.to_tensor(image)
+  frame_tensor = TVF.gaussian_blur(frame_tensor, kernel_size=3, sigma=1.0)
+  
+  # CRF compression simulation
+  frame_tensor_hwc = frame_tensor.permute(1, 2, 0)
+  frame_tensor_hwc = crf_compressor.compress(frame_tensor_hwc)
+  
+  # Normalize to [-1, 1]
+  frame_tensor = frame_tensor_hwc.permute(2, 0, 1) * 255.0
+  frame_tensor = (frame_tensor / 127.5) - 1.0
+  
+  return frame_tensor.unsqueeze(0).unsqueeze(2)  # (B, C, F, H, W)
+```
+
+### Video generation
+
+The pipeline handles inference with optional conditioning (`generate_ltx_video.py:208-220`):
+
+```python
+images = pipeline(
+    height=height_padded,
+    width=width_padded,
+    num_frames=num_frames_padded,
+    is_video=True,
+    output_type="pt",
+    config=config,
+    enhance_prompt=enhance_prompt,
+    conditioning_items=conditioning_items,
+    seed=config.seed,
+)
+```
+
+### Post-processing
+
+Remove padding and save output (`generate_ltx_video.py:222-261`):
+
+```python
+# Remove padding
+(pad_left, pad_right, pad_top, pad_bottom) = padding
+images = images[:, :, :config.num_frames, pad_top:pad_bottom, pad_left:pad_right]
+
+# Convert to numpy and save
+for i in range(images.shape[0]):
+  video_np = images[i].permute(1, 2, 3, 0).detach().float().numpy()
+  video_np = (video_np * 255).astype(np.uint8)
+  
+  if video_np.shape[0] == 1:
+    # Save as image
+    imageio.imwrite(output_filename, video_np[0])
+  else:
+    # Save as video
+    with imageio.get_writer(output_filename, fps=fps) as video:
+      for frame in video_np:
+        video.append_data(frame)
+```
+
+## Performance tips
+
+1. **Use appropriate resolutions**: Stick to multiples of 32 to avoid unnecessary padding
+2. **Adjust frame count**: Fewer frames = faster generation
+3. **Enable prompt enhancement**: For short prompts, enhancement improves quality
+4. **Conditioning strength**: Start with 1.0 and reduce if conditioning is too strong
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Wan video generation" icon="video" href="/inference/wan">
+    Alternative video generation with Wan models
+  </Card>
+  <Card title="Flux inference" icon="bolt" href="/inference/flux">
+    High-quality image generation
+  </Card>
+  <Card title="Configuration" icon="gear" href="/reference/configuration">
+    Full configuration reference
+  </Card>
+  <Card title="Training overview" icon="graduation-cap" href="/training/overview">
+    Fine-tune models on custom data
+  </Card>
+</CardGroup>

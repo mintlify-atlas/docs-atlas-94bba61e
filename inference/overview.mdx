@@ -1,0 +1,112 @@
+---
+title: Inference overview
+description: Generate images and videos with MaxDiffusion's optimized inference pipelines
+---
+
+MaxDiffusion provides high-performance inference for latent diffusion models on Google Cloud TPUs and GPUs. All models leverage JAX for compilation and XLA for hardware-specific optimizations.
+
+## Supported models
+
+MaxDiffusion supports the following models for inference:
+
+<CardGroup cols={2}>
+  <Card title="Stable Diffusion" icon="image" href="/inference/stable-diffusion">
+    SD 2 base and SD 2.1 for 512×512 image generation
+  </Card>
+  <Card title="Stable Diffusion XL" icon="sparkles" href="/inference/sdxl">
+    SDXL for high-quality 1024×1024 images with dual text encoders
+  </Card>
+  <Card title="Flux" icon="bolt" href="/inference/flux">
+    Flux dev and schnell variants with optimized flash attention
+  </Card>
+  <Card title="Wan" icon="video" href="/inference/wan">
+    Wan 2.1 and 2.2 for text-to-video and image-to-video generation
+  </Card>
+  <Card title="LTX Video" icon="film" href="/inference/ltx-video">
+    LTX-Video for high-quality video generation with conditioning
+  </Card>
+  <Card title="ControlNet" icon="sliders" href="/inference/controlnet">
+    Conditional generation with ControlNet for SD 1.4 and SDXL
+  </Card>
+</CardGroup>
+
+## Key features
+
+### Sharding strategies
+
+MaxDiffusion supports multiple parallelism strategies for efficient inference:
+
+- **Data parallelism (DDP)**: Replicate the model across devices and process different prompts in parallel
+- **FSDP**: Shard model parameters across devices to fit larger models in memory
+- **Context parallelism**: Split sequence dimension for handling longer context
+
+Configure sharding with parameters:
+
+```bash
+ici_data_parallelism=4      # Number of data parallel devices
+ici_fsdp_parallelism=-1     # Fully shard model parameters
+ici_context_parallelism=2   # Context parallel degree
+```
+
+### Trillium optimizations
+
+TPU v6e (Trillium) benefits from optimized flash attention block sizes. Enable by uncommenting the `flash_block_sizes` configuration in model config files:
+
+- [Flux dev config](https://github.com/AI-Hypercomputer/maxdiffusion/blob/main/src/maxdiffusion/configs/base_flux_dev.yml#L60)
+- [Flux schnell config](https://github.com/AI-Hypercomputer/maxdiffusion/blob/main/src/maxdiffusion/configs/base_flux_schnell.yml#L68)
+
+### Encoder offloading
+
+For models with large text encoders (like Flux), offload encoders to keep the transformer and VAE in HBM:
+
+```bash
+offload_encoders=False  # Keep all components in HBM
+```
+
+### Precision control
+
+All models use bfloat16 by default for optimal performance on TPUs:
+
+- Activations: bfloat16
+- Weights: bfloat16
+- Latents: float32 for numerical stability
+
+## Common parameters
+
+All inference scripts accept these common parameters:
+
+| Parameter | Description | Default |
+|-----------|-------------|--------|
+| `prompt` | Text prompt for generation | Required |
+| `negative_prompt` | Negative prompt to avoid concepts | Empty string |
+| `num_inference_steps` | Number of denoising steps | Model-specific |
+| `guidance_scale` | Classifier-free guidance strength | 7.5 |
+| `per_device_batch_size` | Batch size per device | 1 |
+| `seed` | Random seed for reproducibility | 0 |
+| `output_dir` | Directory for saving outputs | `/tmp/` |
+| `jax_cache_dir` | JAX compilation cache directory | Required |
+
+## Performance tips
+
+1. **Use flash attention**: Set `attention="flash"` for 2-4x speedup on supported hardware
+2. **Enable HF transfer**: Set `HF_HUB_ENABLE_HF_TRANSFER=1` for faster model downloads
+3. **Cache compilations**: Use `jax_cache_dir` to avoid recompiling on subsequent runs
+4. **Optimize batch size**: Increase `per_device_batch_size` to maximize hardware utilization
+5. **Use async collectives**: Set LIBTPU_INIT_ARGS for better communication overlap on TPUs
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Stable Diffusion XL" icon="image" href="/inference/sdxl">
+    Generate high-quality images with SDXL
+  </Card>
+  <Card title="Flux" icon="bolt" href="/inference/flux">
+    Fast inference with Flux dev and schnell
+  </Card>
+  <Card title="Wan video generation" icon="video" href="/inference/wan">
+    Create videos with Wan 2.1 and 2.2
+  </Card>
+  <Card title="LoRA loading" icon="puzzle-piece" href="/inference/flux#lora-support">
+    Load custom LoRA adapters
+  </Card>
+</CardGroup>

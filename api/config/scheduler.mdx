@@ -1,0 +1,319 @@
+---
+title: Scheduler configuration
+description: Configuration for noise schedulers in MaxDiffusion
+---
+
+Schedulers control the denoising process in diffusion models. MaxDiffusion provides several Flax-based schedulers.
+
+## FlaxDDIMScheduler
+
+Denoising Diffusion Implicit Models (DDIM) scheduler for faster sampling.
+
+Located in `src/maxdiffusion/schedulers/scheduling_ddim_flax.py:66`
+
+### Configuration parameters
+
+<ParamField path="num_train_timesteps" type="int" default="1000">
+  Number of diffusion steps used to train the model
+</ParamField>
+
+<ParamField path="beta_start" type="float" default="0.0001">
+  The starting beta value of inference
+</ParamField>
+
+<ParamField path="beta_end" type="float" default="0.02">
+  The final beta value
+</ParamField>
+
+<ParamField path="beta_schedule" type="str" default="linear">
+  The beta schedule, a mapping from a beta range to a sequence of betas. Options: `linear`, `scaled_linear`, `squaredcos_cap_v2`
+</ParamField>
+
+<ParamField path="trained_betas" type="jnp.ndarray">
+  Option to pass an array of betas directly to bypass beta_start/beta_end
+</ParamField>
+
+<ParamField path="set_alpha_to_one" type="bool" default="True">
+  Whether to use alpha product of 1 for the final step (vs. alpha at step 0)
+</ParamField>
+
+<ParamField path="steps_offset" type="int" default="0">
+  An offset added to the inference steps
+</ParamField>
+
+<ParamField path="prediction_type" type="str" default="epsilon">
+  What the model predicts. Options: `epsilon` (noise), `sample` (direct sample), `v_prediction`
+</ParamField>
+
+<ParamField path="timestep_spacing" type="str" default="leading">
+  How timesteps are spaced. Options: `leading`, `trailing`
+</ParamField>
+
+### Methods
+
+#### `create_state`
+
+Creates the scheduler state.
+
+**Returns:**
+
+<ResponseField name="state" type="DDIMSchedulerState">
+  Initialized scheduler state
+</ResponseField>
+
+#### `set_timesteps`
+
+Sets the discrete timesteps for the diffusion chain.
+
+**Parameters:**
+
+<ParamField path="state" type="DDIMSchedulerState">
+  Current scheduler state
+</ParamField>
+
+<ParamField path="num_inference_steps" type="int">
+  Number of diffusion steps for inference
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="state" type="DDIMSchedulerState">
+  Updated scheduler state with timesteps
+</ResponseField>
+
+#### `step`
+
+Performs one denoising step.
+
+**Parameters:**
+
+<ParamField path="state" type="DDIMSchedulerState">
+  Current scheduler state
+</ParamField>
+
+<ParamField path="model_output" type="jnp.ndarray">
+  Direct output from learned diffusion model
+</ParamField>
+
+<ParamField path="timestep" type="int">
+  Current discrete timestep in the diffusion chain
+</ParamField>
+
+<ParamField path="sample" type="jnp.ndarray">
+  Current instance of sample being created
+</ParamField>
+
+<ParamField path="eta" type="float" default="0.0">
+  Weight of noise for added noise in diffusion step
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="prev_sample" type="jnp.ndarray">
+  Sample at previous timestep
+</ResponseField>
+
+<ResponseField name="state" type="DDIMSchedulerState">
+  Updated scheduler state
+</ResponseField>
+
+## FlaxFlowMatchScheduler
+
+Flow matching scheduler for continuous-time diffusion, used in WAN models.
+
+Located in `src/maxdiffusion/schedulers/scheduling_flow_match_flax.py:70`
+
+### Configuration parameters
+
+<ParamField path="num_train_timesteps" type="int" default="1000">
+  Number of training timesteps
+</ParamField>
+
+<ParamField path="shift" type="float" default="3.0">
+  Shift parameter for flow matching (typically 3.0 for 480p, 5.0 for 720p)
+</ParamField>
+
+<ParamField path="sigma_max" type="float" default="1.0">
+  Maximum sigma value
+</ParamField>
+
+<ParamField path="sigma_min" type="float" default="0.003/1.002">
+  Minimum sigma value
+</ParamField>
+
+<ParamField path="inverse_timesteps" type="bool" default="False">
+  Whether to use inverse timesteps
+</ParamField>
+
+<ParamField path="extra_one_step" type="bool" default="False">
+  Whether to add an extra step
+</ParamField>
+
+<ParamField path="reverse_sigmas" type="bool" default="False">
+  Whether to reverse the sigma schedule
+</ParamField>
+
+### Methods
+
+#### `set_timesteps`
+
+Sets timesteps with optional time shifting.
+
+**Parameters:**
+
+<ParamField path="state" type="FlowMatchSchedulerState">
+  Current scheduler state
+</ParamField>
+
+<ParamField path="num_inference_steps" type="int" default="100">
+  Number of diffusion steps
+</ParamField>
+
+<ParamField path="denoising_strength" type="float" default="1.0">
+  Strength of denoising process
+</ParamField>
+
+<ParamField path="training" type="bool" default="False">
+  Whether the scheduler is being used for training
+</ParamField>
+
+<ParamField path="shift" type="float">
+  Optional shift value to override config
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="state" type="FlowMatchSchedulerState">
+  Updated scheduler state
+</ResponseField>
+
+#### `step`
+
+Performs one flow matching step.
+
+**Parameters:**
+
+<ParamField path="state" type="FlowMatchSchedulerState">
+  Current scheduler state
+</ParamField>
+
+<ParamField path="model_output" type="jnp.ndarray">
+  Model predicted velocity
+</ParamField>
+
+<ParamField path="timestep" type="jnp.ndarray">
+  Current timestep
+</ParamField>
+
+<ParamField path="sample" type="jnp.ndarray">
+  Current sample
+</ParamField>
+
+<ParamField path="to_final" type="bool" default="False">
+  Whether this is the final step
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="prev_sample" type="jnp.ndarray">
+  Sample at previous timestep
+</ResponseField>
+
+<ResponseField name="state" type="FlowMatchSchedulerState">
+  Updated scheduler state
+</ResponseField>
+
+#### `add_noise`
+
+Adds noise to samples according to the flow matching schedule.
+
+**Parameters:**
+
+<ParamField path="state" type="FlowMatchSchedulerState">
+  Current scheduler state
+</ParamField>
+
+<ParamField path="original_samples" type="jnp.ndarray">
+  Original clean samples
+</ParamField>
+
+<ParamField path="noise" type="jnp.ndarray">
+  Noise to add
+</ParamField>
+
+<ParamField path="timesteps" type="jnp.ndarray">
+  Timesteps corresponding to noise levels
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="noisy_samples" type="jnp.ndarray">
+  Noisy samples
+</ResponseField>
+
+## Other schedulers
+
+MaxDiffusion also supports:
+
+### FlaxEulerDiscreteScheduler
+
+Euler discrete scheduler for efficient sampling.
+
+### FlaxUniPCMultistepScheduler
+
+UniPC multistep scheduler for fast high-quality sampling, used in WAN models.
+
+### FlaxDPMSolverMultistepScheduler
+
+DPM-Solver++ for fast sampling with fewer steps.
+
+### FlaxLMSDiscreteScheduler
+
+Linear multistep scheduler.
+
+### FlaxPNDMScheduler
+
+Pseudo numerical methods for diffusion models.
+
+## Example: Using a scheduler
+
+```python
+import jax
+from maxdiffusion.schedulers import FlaxDDIMScheduler
+
+# Create scheduler
+scheduler = FlaxDDIMScheduler(
+    num_train_timesteps=1000,
+    beta_schedule="scaled_linear",
+    prediction_type="epsilon"
+)
+
+# Create state
+state = scheduler.create_state()
+
+# Set timesteps for inference
+state = scheduler.set_timesteps(
+    state,
+    num_inference_steps=50
+)
+
+# Denoising loop
+latents = jax.random.normal(key, shape=(1, 4, 64, 64))
+
+for t in state.timesteps:
+    # Get model prediction
+    noise_pred = model(latents, t, encoder_hidden_states)
+    
+    # Denoise step
+    output = scheduler.step(state, noise_pred, t, latents)
+    latents = output.prev_sample
+    state = output.state
+```
+
+## Scheduler selection guide
+
+- **DDIM**: Fast sampling with deterministic results
+- **Euler**: Simple and efficient, good default choice
+- **DPM-Solver++**: Highest quality in fewest steps
+- **Flow matching**: For continuous-time models like WAN
+- **UniPC**: Fast convergence for video models

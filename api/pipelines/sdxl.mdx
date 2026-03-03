@@ -1,0 +1,172 @@
+---
+title: Stable Diffusion XL pipeline
+description: Reference documentation for the SDXL pipeline
+---
+
+The `FlaxStableDiffusionXLPipeline` extends Stable Diffusion with higher resolution generation and dual text encoders.
+
+## FlaxStableDiffusionXLPipeline
+
+Located in `src/maxdiffusion/pipelines/stable_diffusion_xl/pipeline_flax_stable_diffusion_xl.py:43`
+
+### Components
+
+<ParamField path="text_encoder" type="FlaxCLIPTextModel">
+  First CLIP text encoder
+</ParamField>
+
+<ParamField path="text_encoder_2" type="FlaxCLIPTextModel">
+  Second CLIP text encoder for improved text understanding
+</ParamField>
+
+<ParamField path="vae" type="FlaxAutoencoderKL">
+  Variational Auto-Encoder (VAE) model to encode and decode images
+</ParamField>
+
+<ParamField path="tokenizer" type="CLIPTokenizer">
+  First tokenizer
+</ParamField>
+
+<ParamField path="tokenizer_2" type="CLIPTokenizer">
+  Second tokenizer corresponding to text_encoder_2
+</ParamField>
+
+<ParamField path="unet" type="FlaxUNet2DConditionModel">
+  UNet to denoise the encoded image latents with additional conditioning
+</ParamField>
+
+<ParamField path="scheduler" type="SchedulerMixin">
+  A scheduler to be used in combination with unet to denoise the encoded image latents
+</ParamField>
+
+### Methods
+
+#### `prepare_inputs`
+
+Tokenizes text prompts with both tokenizers.
+
+**Parameters:**
+
+<ParamField path="prompt" type="str | List[str]">
+  The prompt or prompts to guide image generation
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="inputs" type="jnp.ndarray">
+  Stacked tokenized input IDs from both tokenizers with shape `(batch_size, 2, sequence_length)`
+</ResponseField>
+
+#### `get_embeddings`
+
+Encodes prompts using dual text encoders.
+
+**Parameters:**
+
+<ParamField path="prompt_ids" type="jnp.array">
+  Tokenized prompt IDs from both tokenizers
+</ParamField>
+
+<ParamField path="params" type="dict">
+  Model parameters
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="prompt_embeds" type="jnp.ndarray">
+  Concatenated embeddings from both text encoders
+</ResponseField>
+
+<ResponseField name="text_embeds" type="jnp.ndarray">
+  Pooled text embeddings from the second encoder
+</ResponseField>
+
+#### `__call__`
+
+Generate images from text prompts.
+
+**Parameters:**
+
+<ParamField path="prompt_ids" type="jax.Array">
+  Tokenized prompt IDs from both encoders
+</ParamField>
+
+<ParamField path="params" type="dict | FrozenDict">
+  Model parameters for all pipeline components
+</ParamField>
+
+<ParamField path="prng_seed" type="jax.Array">
+  Random seed for generation
+</ParamField>
+
+<ParamField path="num_inference_steps" type="int" default="50">
+  The number of denoising steps
+</ParamField>
+
+<ParamField path="guidance_scale" type="float | jax.Array" default="7.5">
+  Guidance scale for classifier-free guidance
+</ParamField>
+
+<ParamField path="height" type="int">
+  The height in pixels of the generated image. Defaults to `unet.config.sample_size * vae_scale_factor`
+</ParamField>
+
+<ParamField path="width" type="int">
+  The width in pixels of the generated image. Defaults to `unet.config.sample_size * vae_scale_factor`
+</ParamField>
+
+<ParamField path="latents" type="jnp.array">
+  Pre-generated noisy latents
+</ParamField>
+
+<ParamField path="neg_prompt_ids" type="jnp.array">
+  Tokenized negative prompt IDs
+</ParamField>
+
+<ParamField path="output_type" type="str">
+  Output type - set to "latent" to return latents instead of decoded images
+</ParamField>
+
+<ParamField path="jit" type="bool" default="False">
+  Whether to run pmap versions of the generation functions
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="images" type="jnp.ndarray">
+  Generated images or latents
+</ResponseField>
+
+## Key differences from Stable Diffusion
+
+- **Dual text encoders**: Uses two CLIP text encoders for improved text understanding
+- **Higher resolution**: Optimized for generating 1024x1024 images
+- **Additional conditioning**: Uses pooled text embeddings and time IDs for micro-conditioning
+- **Concatenated embeddings**: Text embeddings from both encoders are concatenated
+
+## Example usage
+
+```python
+import jax
+from maxdiffusion import FlaxStableDiffusionXLPipeline
+
+# Load pipeline
+pipeline, params = FlaxStableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    dtype=jax.numpy.bfloat16
+)
+
+prompt = "a professional photograph of an astronaut riding a horse"
+prompt_ids = pipeline.prepare_inputs(prompt)
+
+# Generate
+prng_seed = jax.random.PRNGKey(0)
+images = pipeline(
+    prompt_ids,
+    params,
+    prng_seed,
+    num_inference_steps=50,
+    height=1024,
+    width=1024
+).images
+```

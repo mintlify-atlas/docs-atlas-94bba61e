@@ -1,0 +1,439 @@
+---
+title: train_flux.py
+description: Train Flux Dev models on TPU v5p
+---
+
+## Overview
+
+The `train_flux.py` script trains Flux Dev models using the MaxDiffusion framework. Flux training has been tested on TPU v5p with support for flash attention and bfloat16 precision.
+
+## Command-line usage
+
+```bash
+python src/maxdiffusion/train_flux.py src/maxdiffusion/configs/base_flux_dev.yml [OPTIONS]
+```
+
+### Basic example
+
+```bash
+python src/maxdiffusion/train_flux.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  run_name="test-flux-train" \
+  output_dir="gs://<your-gcs-bucket>/" \
+  save_final_checkpoint=True \
+  jax_cache_dir="/tmp/jax_cache"
+```
+
+## Performance
+
+Expected results on 1024 x 1024 images with flash attention and bfloat16:
+
+| Model | Accelerator | Sharding Strategy | Per Device Batch Size | Global Batch Size | Step Time (secs) |
+| --- | --- | --- | --- | --- | --- |
+| Flux-dev | v5p-8 | DDP | 1 | 4 | 1.31 |
+
+## Configuration parameters
+
+### Run configuration
+
+<ParamField path="run_name" type="string" required>
+  Name for this training run. Used for organizing outputs and metrics.
+</ParamField>
+
+<ParamField path="base_output_directory" type="string">
+  GCS bucket path for outputs (e.g., `gs://my-bucket/`). Checkpoints and metrics will be saved here.
+</ParamField>
+
+<ParamField path="output_dir" type="string" default="sdxl-model-finetuned">
+  Local or GCS directory for model outputs.
+</ParamField>
+
+<ParamField path="save_final_checkpoint" type="boolean" default={false}>
+  Save the final checkpoint after training completes.
+</ParamField>
+
+### Model configuration
+
+<ParamField path="pretrained_model_name_or_path" type="string" default="black-forest-labs/FLUX.1-dev">
+  HuggingFace model identifier or local path to pretrained Flux model.
+</ParamField>
+
+<ParamField path="clip_model_name_or_path" type="string" default="ariG23498/clip-vit-large-patch14-text-flax">
+  HuggingFace model identifier for CLIP text encoder.
+</ParamField>
+
+<ParamField path="t5xxl_model_name_or_path" type="string" default="ariG23498/t5-v1-1-xxl-flax">
+  HuggingFace model identifier for T5-XXL text encoder.
+</ParamField>
+
+<ParamField path="flux_name" type="string" default="flux-dev">
+  Flux model variant name. Options: `flux-dev`, `flux-schnell`.
+</ParamField>
+
+<ParamField path="unet_checkpoint" type="string" default="">
+  Path to a specific transformer checkpoint to load.
+</ParamField>
+
+<ParamField path="revision" type="string" default="refs/pr/95">
+  Model revision/branch to use from HuggingFace.
+</ParamField>
+
+<ParamField path="weights_dtype" type="string" default="bfloat16">
+  Data type for model weights. Options: `float32`, `bfloat16`.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for layer activations. Options: `float32`, `bfloat16`.
+</ParamField>
+
+<ParamField path="precision" type="string" default="DEFAULT">
+  JAX precision for matmul and conv operations. Options: `DEFAULT`, `HIGH`, `HIGHEST`.
+</ParamField>
+
+<ParamField path="from_pt" type="boolean" default={true}>
+  Load weights from PyTorch format.
+</ParamField>
+
+<ParamField path="train_new_flux" type="boolean" default={false}>
+  If true, randomly initialize Flux weights to train from scratch. Otherwise, load from pretrained model.
+</ParamField>
+
+### Flux-specific parameters
+
+<ParamField path="max_sequence_length" type="number" default={512}>
+  Maximum text sequence length for T5 encoder.
+</ParamField>
+
+<ParamField path="time_shift" type="boolean" default={true}>
+  Enable time shifting for Flux flow matching.
+</ParamField>
+
+<ParamField path="base_shift" type="number" default={0.5}>
+  Base shift parameter for Flux.
+</ParamField>
+
+<ParamField path="max_shift" type="number" default={1.15}>
+  Maximum shift parameter for Flux.
+</ParamField>
+
+<ParamField path="offload_encoders" type="boolean" default={true}>
+  Offload T5 encoder after text encoding to save memory.
+</ParamField>
+
+### Attention configuration
+
+<ParamField path="attention" type="string" default="flash">
+  Attention mechanism to use. Options: `dot_product`, `flash`, `cudnn_flash_te`.
+</ParamField>
+
+<ParamField path="split_head_dim" type="boolean" default={true}>
+  Whether to split attention head dimensions for sharding.
+</ParamField>
+
+<ParamField path="attention_sharding_uniform" type="boolean" default={true}>
+  Use uniform sequence sharding for both self and cross attention.
+</ParamField>
+
+<ParamField path="mask_padding_tokens" type="boolean" default={true}>
+  Pass segment IDs to attention to avoid attending to padding tokens. Improves quality when padding is significant.
+</ParamField>
+
+<ParamField path="flash_block_sizes" type="object" default={{}}>
+  Custom block sizes for flash attention. On v6e (Trillium), use larger blocks:
+  ```yaml
+  flash_block_sizes: {
+    "block_q" : 1536,
+    "block_kv_compute" : 1536,
+    "block_kv" : 1536,
+    "block_q_dkv" : 1536,
+    "block_kv_dkv" : 1536,
+    "block_kv_dkv_compute" : 1536,
+    "block_q_dq" : 1536,
+    "block_kv_dq" : 1536
+  }
+  ```
+</ParamField>
+
+### Training hyperparameters
+
+<ParamField path="learning_rate" type="number" default={1e-5}>
+  Learning rate for the optimizer.
+</ParamField>
+
+<ParamField path="scale_lr" type="boolean" default={false}>
+  Scale learning rate by the number of GPUs/TPUs and batch size.
+</ParamField>
+
+<ParamField path="max_train_steps" type="number" default={1500}>
+  Maximum number of training steps. Takes priority over `num_train_epochs`.
+</ParamField>
+
+<ParamField path="num_train_epochs" type="number" default={1}>
+  Number of training epochs.
+</ParamField>
+
+<ParamField path="max_train_samples" type="number" default={-1}>
+  Maximum number of training samples to use. -1 means use all samples.
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="number" default={1}>
+  Batch size per device.
+</ParamField>
+
+<ParamField path="warmup_steps_fraction" type="number" default={0.1}>
+  Fraction of total steps to use for learning rate warmup.
+</ParamField>
+
+<ParamField path="seed" type="number" default={0}>
+  Random seed for reproducibility.
+</ParamField>
+
+### Optimizer parameters
+
+<ParamField path="adam_b1" type="number" default={0.9}>
+  Exponential decay rate for first moment estimates.
+</ParamField>
+
+<ParamField path="adam_b2" type="number" default={0.999}>
+  Exponential decay rate for second moment estimates.
+</ParamField>
+
+<ParamField path="adam_eps" type="number" default={1e-8}>
+  Small constant for numerical stability.
+</ParamField>
+
+<ParamField path="adam_weight_decay" type="number" default={0}>
+  Weight decay coefficient for AdamW optimizer.
+</ParamField>
+
+<ParamField path="max_grad_norm" type="number" default={1.0}>
+  Maximum gradient norm for gradient clipping.
+</ParamField>
+
+### Loss and noise schedule
+
+<ParamField path="snr_gamma" type="number" default={-1.0}>
+  SNR-weighted loss gamma parameter. Set to -1.0 to disable.
+</ParamField>
+
+<ParamField path="timestep_bias" type="object">
+  Configuration for biasing timestep sampling during training.
+  
+  - `strategy`: Bias strategy. Options: `none`, `earlier`, `later`, `range`
+  - `multiplier`: Bias multiplier (2.0 doubles weight, 0.5 halves it)
+  - `begin`: Start timestep for range strategy
+  - `end`: End timestep for range strategy
+  - `portion`: Fraction of timesteps to bias
+</ParamField>
+
+<ParamField path="diffusion_scheduler_config" type="object">
+  Override parameters for the diffusion scheduler.
+  
+  - `_class_name`: Scheduler class name (default: `FlaxEulerDiscreteScheduler`)
+  - `prediction_type`: Prediction type (default: `epsilon`)
+  - `rescale_zero_terminal_snr`: Whether to rescale zero terminal SNR
+  - `timestep_spacing`: Timestep spacing strategy (default: `trailing`)
+</ParamField>
+
+### Dataset configuration
+
+<ParamField path="dataset_name" type="string" default="diffusers/pokemon-gpt4-captions">
+  HuggingFace dataset identifier.
+</ParamField>
+
+<ParamField path="train_data_dir" type="string" default="">
+  Local directory containing training data. Either this or `dataset_name` must be set.
+</ParamField>
+
+<ParamField path="train_split" type="string" default="train">
+  Dataset split to use for training.
+</ParamField>
+
+<ParamField path="dataset_type" type="string" default="tfrecord">
+  Dataset format type. Options: `tfrecord`, `hf`, `tf`, `grain`, `synthetic`.
+</ParamField>
+
+<ParamField path="cache_latents_text_encoder_outputs" type="boolean" default={true}>
+  Cache image latents and text encoder outputs to reduce memory and speed up training.
+</ParamField>
+
+<ParamField path="dataset_save_location" type="string" default="/tmp/pokemon-gpt4-captions_xl">
+  Path to save transformed dataset when caching is enabled.
+</ParamField>
+
+<ParamField path="image_column" type="string" default="image">
+  Name of the image column in the dataset.
+</ParamField>
+
+<ParamField path="caption_column" type="string" default="text">
+  Name of the caption column in the dataset.
+</ParamField>
+
+<ParamField path="resolution" type="number" default={1024}>
+  Image resolution for training.
+</ParamField>
+
+<ParamField path="center_crop" type="boolean" default={false}>
+  Whether to center crop images before resizing.
+</ParamField>
+
+<ParamField path="random_flip" type="boolean" default={false}>
+  Whether to randomly flip images horizontally.
+</ParamField>
+
+<ParamField path="enable_data_shuffling" type="boolean" default={true}>
+  Shuffle the dataset during training.
+</ParamField>
+
+### Parallelism and sharding
+
+<ParamField path="hardware" type="string" default="tpu">
+  Hardware type. Options: `tpu`, `gpu`.
+</ParamField>
+
+<ParamField path="mesh_axes" type="array" default={["data", "fsdp", "context", "tensor"]}>
+  Logical mesh axes for parallelism.
+</ParamField>
+
+<ParamField path="dcn_data_parallelism" type="number" default={1}>
+  Data parallelism across DCN.
+</ParamField>
+
+<ParamField path="dcn_fsdp_parallelism" type="number" default={-1}>
+  FSDP parallelism across DCN. -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="dcn_tensor_parallelism" type="number" default={1}>
+  Tensor parallelism across DCN.
+</ParamField>
+
+<ParamField path="ici_data_parallelism" type="number" default={-1}>
+  Data parallelism within ICI. -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_fsdp_parallelism" type="number" default={1}>
+  FSDP parallelism within ICI.
+</ParamField>
+
+<ParamField path="ici_tensor_parallelism" type="number" default={1}>
+  Tensor parallelism within ICI.
+</ParamField>
+
+### Checkpointing
+
+<ParamField path="checkpoint_every" type="number" default={-1}>
+  Save checkpoint every N samples. -1 disables checkpointing.
+</ParamField>
+
+<ParamField path="enable_single_replica_ckpt_restoring" type="boolean" default={false}>
+  Enable one replica to read checkpoint and broadcast to others.
+</ParamField>
+
+### Metrics and logging
+
+<ParamField path="write_metrics" type="boolean" default={true}>
+  Save metrics such as loss and TFLOPS to GCS.
+</ParamField>
+
+<ParamField path="gcs_metrics" type="boolean" default={false}>
+  Write metrics to GCS.
+</ParamField>
+
+<ParamField path="log_period" type="number" default={100}>
+  Tensorboard flush period.
+</ParamField>
+
+### Profiling
+
+<ParamField path="enable_profiler" type="boolean" default={false}>
+  Enable JAX profiler.
+</ParamField>
+
+<ParamField path="skip_first_n_steps_for_profiler" type="number" default={5}>
+  Skip first N steps when profiling to exclude compilation.
+</ParamField>
+
+<ParamField path="profiler_steps" type="number" default={10}>
+  Number of steps to profile.
+</ParamField>
+
+<ParamField path="profiler" type="string" default="">
+  Profiler configuration.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Prompt for test image generation during training.
+</ParamField>
+
+<ParamField path="prompt_2" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Secondary prompt for dual text encoder.
+</ParamField>
+
+<ParamField path="negative_prompt" type="string" default="purple, red">
+  Negative prompt for guidance.
+</ParamField>
+
+<ParamField path="do_classifier_free_guidance" type="boolean" default={true}>
+  Enable classifier-free guidance.
+</ParamField>
+
+<ParamField path="guidance_scale" type="number" default={3.5}>
+  Classifier-free guidance scale for Flux.
+</ParamField>
+
+<ParamField path="num_inference_steps" type="number" default={50}>
+  Number of denoising steps for test generation.
+</ParamField>
+
+## Expected outputs
+
+### Checkpoints
+
+When `save_final_checkpoint` is true or `checkpoint_every` is set, checkpoints are saved to:
+```
+{base_output_directory}/{run_name}/checkpoints/
+```
+
+Checkpoints include:
+- Flux transformer weights
+- Optimizer state
+- Training step information
+
+### Metrics
+
+Training metrics are saved to:
+```
+{base_output_directory}/{run_name}/metrics/
+```
+
+Metrics include:
+- Training loss
+- Learning rate
+- TFLOPS per device
+- Step time
+
+### Tensorboard logs
+
+Tensorboard logs are written to:
+```
+{base_output_directory}/{run_name}/tensorboard/
+```
+
+View logs with:
+```bash
+tensorboard --logdir=gs://your-bucket/{run_name}/tensorboard/
+```
+
+## Generating images from trained checkpoint
+
+After training, generate images with:
+
+```bash
+python src/maxdiffusion/generate_flux_pipeline.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  run_name="test-flux-train" \
+  output_dir="gs://<your-gcs-bucket>/" \
+  jax_cache_dir="/tmp/jax_cache"
+```

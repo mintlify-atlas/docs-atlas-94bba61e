@@ -1,0 +1,131 @@
+---
+title: ControlNet model
+description: Reference documentation for the FlaxControlNetModel architecture
+---
+
+The `FlaxControlNetModel` adds spatial conditioning to Stable Diffusion models through additional inputs like edge maps, depth maps, or pose keypoints.
+
+## FlaxControlNetModel
+
+### Model architecture
+
+ControlNet extends UNet with:
+- **Conditioning embedding**: Processes control images (e.g., edge maps, depth maps)
+- **Zero-initialized convolutions**: Ensures training starts from the pretrained model
+- **Parallel down/mid blocks**: Mirror the UNet structure
+- **Residual connections**: Output residuals added to UNet activations
+
+Located in `src/maxdiffusion/models/controlnet_flax.py:100`
+
+### Configuration parameters
+
+<ParamField path="sample_size" type="int" default="32">
+  The size of the input sample
+</ParamField>
+
+<ParamField path="in_channels" type="int" default="4">
+  The number of channels in the input sample
+</ParamField>
+
+<ParamField path="down_block_types" type="Tuple[str]">
+  The tuple of downsample blocks to use. Defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`
+</ParamField>
+
+<ParamField path="block_out_channels" type="Tuple[int]" default="(320, 640, 1280, 1280)">
+  The tuple of output channels for each block
+</ParamField>
+
+<ParamField path="layers_per_block" type="int" default="2">
+  The number of layers per block
+</ParamField>
+
+<ParamField path="attention_head_dim" type="int | Tuple[int]" default="8">
+  The dimension of the attention heads
+</ParamField>
+
+<ParamField path="cross_attention_dim" type="int" default="1280">
+  The dimension of the cross attention features
+</ParamField>
+
+<ParamField path="controlnet_conditioning_channel_order" type="str" default="rgb">
+  The channel order of conditional image. Will convert to `rgb` if it's `bgr`
+</ParamField>
+
+<ParamField path="conditioning_embedding_out_channels" type="Tuple[int]" default="(16, 32, 96, 256)">
+  The tuple of output channels for each block in the conditioning_embedding layer
+</ParamField>
+
+### Methods
+
+#### `__call__`
+
+Forward pass through ControlNet.
+
+**Parameters:**
+
+<ParamField path="sample" type="jnp.ndarray">
+  Noisy inputs tensor of shape `(batch, channel, height, width)`
+</ParamField>
+
+<ParamField path="timesteps" type="jnp.ndarray | float | int">
+  Timesteps for the diffusion process
+</ParamField>
+
+<ParamField path="encoder_hidden_states" type="jnp.ndarray">
+  Encoder hidden states of shape `(batch_size, sequence_length, hidden_size)`
+</ParamField>
+
+<ParamField path="controlnet_cond" type="jnp.ndarray">
+  The conditional input tensor (e.g., edge map, depth map) of shape `(batch, channel, height, width)`
+</ParamField>
+
+<ParamField path="conditioning_scale" type="float" default="1.0">
+  The scale factor for ControlNet outputs
+</ParamField>
+
+<ParamField path="train" type="bool" default="False">
+  Use deterministic functions and disable dropout when not training
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="down_block_res_samples" type="jnp.ndarray">
+  Tuple of residual samples from down blocks to be added to UNet
+</ResponseField>
+
+<ResponseField name="mid_block_res_sample" type="jnp.ndarray">
+  Residual sample from mid block to be added to UNet
+</ResponseField>
+
+## FlaxControlNetOutput
+
+Output dataclass for ControlNet located at `src/maxdiffusion/models/controlnet_flax.py:30`.
+
+<ResponseField name="down_block_res_samples" type="jnp.ndarray">
+  Residuals from down blocks
+</ResponseField>
+
+<ResponseField name="mid_block_res_sample" type="jnp.ndarray">
+  Residual from mid block
+</ResponseField>
+
+## FlaxControlNetConditioningEmbedding
+
+Conditioning embedding module located at `src/maxdiffusion/models/controlnet_flax.py:43`.
+
+### Architecture
+
+Processes control images through:
+- Initial convolution
+- Series of convolution blocks with downsampling
+- Zero-initialized output convolution
+
+**Parameters:**
+
+<ParamField path="conditioning_embedding_channels" type="int">
+  Output channels for conditioning embedding
+</ParamField>
+
+<ParamField path="block_out_channels" type="Tuple[int]" default="(16, 32, 96, 256)">
+  Channels for each block in the conditioning embedding
+</ParamField>

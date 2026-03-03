@@ -1,0 +1,121 @@
+---
+title: Multi-LoRA loading
+description: Load and combine multiple LoRA adapters for enhanced customization
+---
+
+MaxDiffusion supports loading multiple LoRA adapters simultaneously, allowing you to combine different styles and effects in a single generation. This feature is available for Flux and SDXL models.
+
+## Multiple Flux LoRAs
+
+You can load multiple LoRA adapters for Flux models by providing arrays in the `lora_config` parameter.
+
+### Example
+
+```bash
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  jax_cache_dir=/tmp/cache_dir \
+  run_name=flux_test \
+  output_dir=/tmp/ \
+  prompt='A cute corgi lives in a house made out of sushi, anime' \
+  num_inference_steps=28 \
+  ici_data_parallelism=1 \
+  ici_fsdp_parallelism=-1 \
+  split_head_dim=True \
+  lora_config='{"lora_model_name_or_path" : ["/home/jfacevedo/anime_lora.safetensors", "/home/jfacevedo/amateurphoto-v6-forcu.safetensors"], "weight_name" : ["anime_lora.safetensors","amateurphoto-v6-forcu.safetensors"], "adapter_name" : ["anime","realistic"], "scale": [0.6, 0.6], "from_pt": ["true","true"]}'
+```
+
+In this example:
+- Two LoRAs are loaded: an anime style and a realistic photography style
+- Each LoRA has a scale of 0.6, allowing them to blend together
+- Both are loaded from safetensors format (`from_pt: "true"`)
+
+## Multiple SDXL LoRAs
+
+SDXL supports loading multiple LoRAs from both local paths and HuggingFace Hub.
+
+### Example: blueprint and papercut styles
+
+```bash
+python src/maxdiffusion/generate_sdxl.py \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="test-lora" \
+  output_dir=/tmp/tmp/ \
+  jax_cache_dir=/tmp/cache_dir/ \
+  num_inference_steps=30 \
+  do_classifier_free_guidance=True \
+  prompt="ultra detailed diagram blueprint of a papercut Sitting MaineCoon cat, wide canvas, ampereart, electrical diagram, bl3uprint, papercut" \
+  per_device_batch_size=1 \
+  diffusion_scheduler_config='{"_class_name" : "FlaxDDIMScheduler", "timestep_spacing" : "trailing"}' \
+  lora_config='{"lora_model_name_or_path" : ["/home/jfacevedo/blueprintify-sd-xl-10.safetensors","TheLastBen/Papercut_SDXL"], "weight_name" : ["/home/jfacevedo/blueprintify-sd-xl-10.safetensors","papercut.safetensors"], "adapter_name" : ["blueprint","papercut"], "scale": [0.8, 0.7], "from_pt": ["true", "true"]}'
+```
+
+This example demonstrates:
+- Loading one LoRA from a local file path (blueprint style)
+- Loading another LoRA from HuggingFace Hub (papercut style)
+- Using different scale values (0.8 and 0.7) for fine-tuned blending
+- Combining both effects in the generation
+
+## Hyper SDXL LoRA
+
+Hyper-SDXL enables ultra-fast inference in just 2-4 steps using specialized LoRA adapters from ByteDance.
+
+### Features
+
+- Generate high-quality images in 2-4 inference steps
+- Compatible with custom base models
+- Supports DDIM scheduler with trailing timestep spacing
+- Can disable classifier-free guidance for 1-2 step generation
+
+### Example: 2-step generation
+
+```bash
+python src/maxdiffusion/generate_sdxl.py \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="test-lora" \
+  output_dir=/tmp/ \
+  jax_cache_dir=/tmp/cache_dir/ \
+  num_inference_steps=2 \
+  do_classifier_free_guidance=False \
+  prompt="a photograph of a cat wearing a hat riding a skateboard in a park." \
+  per_device_batch_size=1 \
+  pretrained_model_name_or_path="Lykon/AAM_XL_AnimeMix" \
+  from_pt=True \
+  revision=main \
+  diffusion_scheduler_config='{"_class_name" : "FlaxDDIMScheduler", "timestep_spacing" : "trailing"}' \
+  lora_config='{"lora_model_name_or_path" : ["ByteDance/Hyper-SD"], "weight_name" : ["Hyper-SDXL-2steps-lora.safetensors"], "adapter_name" : ["hyper-sdxl"], "scale": [0.7], "from_pt": ["true"]}'
+```
+
+### Key parameters for Hyper-SDXL
+
+- `num_inference_steps`: Set to 2 or 4 depending on the LoRA variant
+- `do_classifier_free_guidance`: Set to `False` for 1-2 steps, `True` for 4+ steps
+- `diffusion_scheduler_config`: Must use `FlaxDDIMScheduler` with `trailing` timestep spacing
+- `scale`: Typically 0.7 for optimal results
+
+## Configuration tips
+
+### Balancing multiple LoRAs
+
+- Start with equal scales (e.g., 0.5-0.7 each) and adjust based on results
+- Lower scales produce more subtle effects
+- Higher scales strengthen the LoRA's influence but may introduce artifacts
+- Total combined scale doesn't need to equal 1.0
+
+### LoRA sources
+
+You can mix and match LoRAs from:
+- Local file paths (safetensors or checkpoint files)
+- HuggingFace Hub repositories
+- Different LoRA formats (standard LoRA, LoCON, etc.)
+
+### Performance considerations
+
+- Loading multiple LoRAs increases memory usage slightly
+- Inference speed is generally unaffected as LoRAs are merged during initialization
+- All LoRAs are merged using device-side JIT compilation for efficiency
+
+## Related resources
+
+- [LoRA inference](/advanced/lora) - Single LoRA loading and configuration
+- [Checkpointing](/advanced/checkpointing) - Save models with LoRA weights

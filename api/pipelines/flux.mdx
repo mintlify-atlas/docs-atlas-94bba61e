@@ -1,0 +1,210 @@
+---
+title: Flux pipeline
+description: Reference documentation for the Flux pipeline
+---
+
+The `FluxPipeline` is a text-to-image generation pipeline using the Flux transformer architecture.
+
+## FluxPipeline
+
+Located in `src/maxdiffusion/pipelines/flux/flux_pipeline.py:42`
+
+### Components
+
+<ParamField path="t5_encoder" type="FlaxT5EncoderModel">
+  T5 text encoder for processing prompts
+</ParamField>
+
+<ParamField path="clip_encoder" type="FlaxCLIPTextModel">
+  CLIP text encoder for pooled embeddings
+</ParamField>
+
+<ParamField path="vae" type="FlaxAutoencoderKL">
+  Variational Auto-Encoder for latent encoding/decoding
+</ParamField>
+
+<ParamField path="t5_tokenizer" type="AutoTokenizer">
+  Tokenizer for T5 encoder
+</ParamField>
+
+<ParamField path="clip_tokenizer" type="CLIPTokenizer">
+  Tokenizer for CLIP encoder
+</ParamField>
+
+<ParamField path="flux" type="FluxTransformer2DModel">
+  Flux transformer model for denoising
+</ParamField>
+
+<ParamField path="scheduler" type="FlaxEulerDiscreteScheduler">
+  Euler discrete scheduler
+</ParamField>
+
+<ParamField path="mesh" type="Mesh">
+  JAX mesh for distributed computation
+</ParamField>
+
+### Methods
+
+#### `encode_prompt`
+
+Encodes text prompts using T5 and CLIP encoders.
+
+**Parameters:**
+
+<ParamField path="prompt" type="str | List[str]">
+  The prompt or prompts to guide image generation
+</ParamField>
+
+<ParamField path="prompt_2" type="str | List[str]">
+  Optional second prompt (defaults to prompt if not provided)
+</ParamField>
+
+<ParamField path="num_images_per_prompt" type="int" default="1">
+  Number of images to generate per prompt
+</ParamField>
+
+<ParamField path="max_sequence_length" type="int" default="512">
+  Maximum sequence length for T5 encoder
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="prompt_embeds" type="jnp.ndarray">
+  T5 text embeddings
+</ResponseField>
+
+<ResponseField name="pooled_prompt_embeds" type="jnp.ndarray">
+  CLIP pooled embeddings
+</ResponseField>
+
+<ResponseField name="text_ids" type="jnp.ndarray">
+  Text position IDs
+</ResponseField>
+
+#### `prepare_latents`
+
+Prepares initial latent tensors for generation.
+
+**Parameters:**
+
+<ParamField path="batch_size" type="int">
+  Batch size
+</ParamField>
+
+<ParamField path="num_channels_latents" type="int">
+  Number of channels in latent space
+</ParamField>
+
+<ParamField path="height" type="int">
+  Height of generated images
+</ParamField>
+
+<ParamField path="width" type="int">
+  Width of generated images
+</ParamField>
+
+<ParamField path="dtype" type="jnp.dtype">
+  Data type for latents
+</ParamField>
+
+<ParamField path="rng" type="jax.random.PRNGKey">
+  Random key for initialization
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="latents" type="jnp.ndarray">
+  Packed latent tensors
+</ResponseField>
+
+<ResponseField name="latent_image_ids" type="jnp.ndarray">
+  Position IDs for latents
+</ResponseField>
+
+#### `time_shift`
+
+Applies time shifting to timesteps based on sequence length.
+
+**Parameters:**
+
+<ParamField path="latents" type="jnp.ndarray">
+  Latent tensors
+</ParamField>
+
+<ParamField path="timesteps" type="jnp.ndarray">
+  Original timesteps
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="timesteps" type="jnp.ndarray">
+  Shifted timesteps
+</ResponseField>
+
+#### `__call__`
+
+Generate images from configuration.
+
+**Parameters:**
+
+<ParamField path="timesteps" type="int">
+  Number of denoising steps
+</ParamField>
+
+<ParamField path="flux_params" type="dict">
+  Flux transformer parameters
+</ParamField>
+
+<ParamField path="vae_params" type="dict">
+  VAE parameters
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="images" type="jnp.ndarray">
+  Generated images
+</ResponseField>
+
+## Key features
+
+- **Dual text encoders**: Combines T5 and CLIP for rich text understanding
+- **Rotary position embeddings**: Uses RoPE for better positional encoding
+- **Flow matching**: Uses flow matching scheduler for efficient sampling
+- **Packed latents**: Packs latent dimensions for efficient processing
+- **Time shifting**: Dynamically adjusts timesteps based on resolution
+
+## Example usage
+
+```python
+import jax
+from maxdiffusion import FluxPipeline
+
+# Initialize pipeline with config
+config = HyperParameters(
+    pretrained_model_name_or_path="black-forest-labs/FLUX.1-dev",
+    prompt="a professional photograph of an astronaut",
+    resolution=1024,
+    guidance_scale=3.5,
+    seed=42
+)
+
+# Create pipeline components
+devices_array = create_device_mesh(config)
+mesh = Mesh(devices_array, config.mesh_axes)
+
+pipeline = FluxPipeline(
+    tokenizer=FluxPipeline.load_tokenizer(config),
+    text_encoder=FluxPipeline.load_text_encoder(config),
+    vae=FluxPipeline.load_vae(devices_array, mesh, rngs, config)[0],
+    # ... other components
+    mesh=mesh,
+    config=config
+)
+
+# Generate
+images = pipeline(
+    timesteps=50,
+    flux_params=flux_params,
+    vae_params=vae_params
+)
+```

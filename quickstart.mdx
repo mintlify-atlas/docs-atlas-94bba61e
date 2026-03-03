@@ -1,80 +1,231 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Generate your first image with MaxDiffusion in minutes
 ---
 
-## Get started in three steps
+# Quickstart
 
-Get your documentation site running locally and make your first customization.
+This guide will help you generate your first image with MaxDiffusion using Stable Diffusion XL on a Cloud TPU.
 
-### Step 1: Set up your local environment
+## Prerequisites
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+- Cloud TPU VM (v4-8, v5p-8, or v6e-8 recommended)
+- MaxDiffusion installed (see [Installation](/installation))
+
+## Generate your first image
+
+<Steps>
+  <Step title="Activate your environment">
+    Make sure MaxDiffusion is installed and your virtual environment is activated:
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
+    ```bash
+    source ~/maxdiffusion_venv/bin/activate
+    cd maxdiffusion
+    ```
+  </Step>
+  
+  <Step title="Run SDXL inference">
+    Generate an image with Stable Diffusion XL:
     
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
+    ```bash
+    python -m src.maxdiffusion.generate_sdxl \
+      src/maxdiffusion/configs/base_xl.yml \
+      run_name="my_first_image" \
+      prompt="A magical castle in the middle of a forest, artistic drawing" \
+      output_dir=/tmp/
+    ```
     
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
+    The generated image will be saved to `/tmp/my_first_image/`.
+  </Step>
+  
+  <Step title="View your image">
+    The output includes:
+    - Generated image: `/tmp/my_first_image/image_0.png`
+    - Generation metadata and parameters
+    
+    <Info>
+      The first run will download model weights from HuggingFace (~13GB for SDXL). Subsequent runs will use cached weights.
+    </Info>
+  </Step>
+</Steps>
+
+## Try different models
+
+<Tabs>
+  <Tab title="Stable Diffusion 2.1">
+    Fast inference with SD 2.1:
+    
+    ```bash
+    python -m src.maxdiffusion.generate \
+      src/maxdiffusion/configs/base21.yml \
+      run_name="sd21_test" \
+      prompt="A serene mountain landscape at sunset" \
+      output_dir=/tmp/
+    ```
+  </Tab>
+  
+  <Tab title="Flux Schnell">
+    Ultra-fast 4-step generation with Flux Schnell:
+    
+    ```bash
+    python src/maxdiffusion/generate_flux.py \
+      src/maxdiffusion/configs/base_flux_schnell.yml \
+      jax_cache_dir=/tmp/cache_dir \
+      run_name=flux_test \
+      output_dir=/tmp/ \
+      prompt="A cute corgi in a house made of sushi, anime" \
+      per_device_batch_size=1
+    ```
+    
+    <Note>
+      Flux requires accepting the license on HuggingFace. Visit [black-forest-labs/FLUX.1-schnell](https://huggingface.co/black-forest-labs/FLUX.1-schnell) to accept the terms.
+    </Note>
+  </Tab>
+  
+  <Tab title="Flux Dev">
+    High-quality generation with Flux Dev (28 steps):
+    
+    ```bash
+    python src/maxdiffusion/generate_flux.py \
+      src/maxdiffusion/configs/base_flux_dev.yml \
+      jax_cache_dir=/tmp/cache_dir \
+      run_name=flux_dev_test \
+      output_dir=/tmp/ \
+      prompt="A photograph of an electronics chip in the shape of a race car" \
+      per_device_batch_size=1
+    ```
+  </Tab>
+</Tabs>
+
+## Customize generation parameters
+
+Control the output by modifying these key parameters:
+
+### Prompt and guidance
+
+```bash
+python -m src.maxdiffusion.generate_sdxl \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="custom" \
+  prompt="A futuristic city with flying cars" \
+  negative_prompt="blurry, low quality, distorted" \
+  guidance_scale=9.0 \
+  output_dir=/tmp/
+```
+
+- **`prompt`**: Main text description of the image
+- **`negative_prompt`**: What to avoid in the image
+- **`guidance_scale`**: How closely to follow the prompt (7.0-15.0, higher = more adherence)
+
+### Quality settings
+
+```bash
+python -m src.maxdiffusion.generate_sdxl \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="high_quality" \
+  prompt="Portrait of a wise old wizard" \
+  num_inference_steps=50 \
+  resolution=1024 \
+  output_dir=/tmp/
+```
+
+- **`num_inference_steps`**: More steps = higher quality but slower (20-50)
+- **`resolution`**: Output image size (512, 1024 for SDXL)
+
+### Performance settings
+
+```bash
+python -m src.maxdiffusion.generate_sdxl \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="batch" \
+  prompt="A scenic landscape" \
+  per_device_batch_size=4 \
+  attention=flash \
+  output_dir=/tmp/
+```
+
+- **`per_device_batch_size`**: Generate multiple images in parallel
+- **`attention`**: Use `flash` for faster inference on TPU
+
+## Performance benchmarks
+
+Expected generation times on different hardware:
+
+| Model | Hardware | Steps | Batch Size | Time |
+|-------|----------|-------|------------|------|
+| Flux Schnell | v6e-4 | 4 | 4 | 0.8s |
+| Flux Dev | v6e-4 | 28 | 4 | 5.5s |
+| Flux Schnell | v4-8 | 4 | 4 | 2.2s |
+| Flux Dev | v4-8 | 28 | 4 | 23s |
+| SDXL | v5p-8 | 20 | 2 | ~15s |
+
+## Use with LoRA adapters
+
+Load LoRA adapters for style transfer:
+
+```bash
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  jax_cache_dir=/tmp/cache_dir \
+  run_name=flux_lora \
+  output_dir=/tmp/ \
+  prompt="A cute corgi in a house made of sushi, anime" \
+  num_inference_steps=28 \
+  ici_data_parallelism=1 \
+  ici_fsdp_parallelism=-1 \
+  split_head_dim=True \
+  lora_config='{"lora_model_name_or_path" : ["/path/to/anime_lora.safetensors"], "weight_name" : ["anime_lora.safetensors"], "adapter_name" : ["anime"], "scale": [0.8], "from_pt": ["true"]}'
+```
+
+<Info>
+  Learn more about LoRA adapters in the [LoRA guide](/advanced/lora).
+</Info>
+
+## Common issues
+
+<Accordion title="Out of memory">
+  Reduce batch size or resolution:
+  
+  ```bash
+  per_device_batch_size=1
+  resolution=512
+  ```
+  
+  Or enable gradient checkpointing and offloading in the config file.
 </Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+<Accordion title="Model download fails">
+  Set up HuggingFace authentication:
+  
+  ```bash
+  pip install huggingface_hub
+  huggingface-cli login
+  ```
+  
+  Some models (like Flux) require accepting license terms on HuggingFace.
+</Accordion>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
+<Accordion title="Slow first run">
+  The first run includes:
+  - Model weight download (~5-15GB)
+  - JAX compilation (1-3 minutes)
+  
+  Subsequent runs are much faster as weights and compiled code are cached.
 </Accordion>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
-
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Training guide" icon="graduation-cap" href="/training/sdxl">
+    Fine-tune models on your own data
+  </Card>
+  <Card title="LoRA adapters" icon="layer-group" href="/advanced/lora">
+    Use LoRA for style transfer
+  </Card>
+  <Card title="Video generation" icon="video" href="/inference/wan">
+    Generate videos with Wan models
+  </Card>
+  <Card title="Scale to multi-host" icon="network-wired" href="/deployment/xpk">
+    Deploy at scale with XPK
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

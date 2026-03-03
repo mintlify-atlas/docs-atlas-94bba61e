@@ -1,0 +1,280 @@
+---
+title: 'generate_ltx_video.py'
+description: 'LTX-Video generation script for text-to-video and image-to-video synthesis'
+---
+
+## Overview
+
+The `generate_ltx_video.py` script provides inference for LTX-Video models, supporting both text-to-video and image-to-video generation. LTX-Video uses a multi-scale pipeline with advanced guidance techniques for high-quality video synthesis.
+
+## Setup
+
+Before running inference, convert PyTorch weights to JAX format:
+
+```bash
+cd src/maxdiffusion/models/ltx_video/utils
+python convert_torch_weights_to_jax.py \
+  --ckpt_path [LOCAL DIRECTORY FOR WEIGHTS] \
+  --transformer_config_path ../ltxv-13B.json
+```
+
+## Usage
+
+### Text-to-video
+
+```bash
+python src/maxdiffusion/generate_ltx_video.py \
+  src/maxdiffusion/configs/ltx_video.yml \
+  output_dir="[WEIGHTS DIRECTORY]" \
+  config_path="src/maxdiffusion/models/ltx_video/ltxv-13B.json"
+```
+
+### Image-to-video
+
+Add the conditioning image path to the config file:
+
+```yaml
+conditioning_media_paths: ["path/to/image.jpg"]
+conditioning_start_frames: [0]
+```
+
+Then run:
+
+```bash
+python src/maxdiffusion/generate_ltx_video.py \
+  src/maxdiffusion/configs/ltx_video.yml \
+  output_dir="[WEIGHTS DIRECTORY]" \
+  config_path="src/maxdiffusion/models/ltx_video/ltxv-13B.json"
+```
+
+## Configuration parameters
+
+### Model parameters
+
+<ParamField path="text_encoder_model_name_or_path" type="string" default="ariG23498/t5-v1-1-xxl-flax">
+  T5 text encoder model path.
+</ParamField>
+
+<ParamField path="prompt_enhancer_image_caption_model_name_or_path" type="string" default="MiaoshouAI/Florence-2-large-PromptGen-v2.0">
+  Florence-2 model for prompt enhancement.
+</ParamField>
+
+<ParamField path="prompt_enhancer_llm_model_name_or_path" type="string" default="unsloth/Llama-3.2-3B-Instruct">
+  LLM for prompt enhancement.
+</ParamField>
+
+<ParamField path="spatial_upscaler_model_path" type="string" default="ltxv-spatial-upscaler-0.9.7.safetensors">
+  Spatial upscaler model for second pass.
+</ParamField>
+
+<ParamField path="config_path" type="string" required>
+  Path to transformer config JSON file.
+</ParamField>
+
+<ParamField path="sampler" type="string" default="from_checkpoint">
+  Sampler type to use.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string" required>
+  Text prompt describing the video to generate.
+  
+  **Example:**
+  ```
+  "A man in a dimly lit room talks on a vintage telephone, hangs up, and looks down with a sad expression."
+  ```
+</ParamField>
+
+<ParamField path="height" type="integer" default={512}>
+  Video height in pixels. Will be padded to nearest multiple of 32.
+</ParamField>
+
+<ParamField path="width" type="integer" default={512}>
+  Video width in pixels. Will be padded to nearest multiple of 32.
+</ParamField>
+
+<ParamField path="num_frames" type="integer" default={88}>
+  Number of frames to generate. Will be padded to (n-2)//8*8 + 1.
+</ParamField>
+
+<ParamField path="frame_rate" type="integer" default={30}>
+  Output video frame rate (fps).
+</ParamField>
+
+<ParamField path="max_sequence_length" type="integer" default={512}>
+  Maximum sequence length for text encoder.
+</ParamField>
+
+### Pipeline parameters
+
+<ParamField path="pipeline_type" type="string" default="multi-scale">
+  Pipeline architecture. Options: `multi-scale`, `single-pass`.
+</ParamField>
+
+<ParamField path="flow_shift" type="float" default={5.0}>
+  Flow shift parameter for noise scheduling.
+</ParamField>
+
+<ParamField path="downscale_factor" type="float" default={0.6666666}>
+  Downscale factor for first pass in multi-scale pipeline.
+</ParamField>
+
+### Multi-scale first pass parameters
+
+<ParamField path="first_pass" type="object">
+  Configuration for the first pass of multi-scale generation.
+  
+  **Properties:**
+  - `guidance_scale` (array): Guidance scales per stage
+  - `stg_scale` (array): STG (Semantic Temporal Guidance) scales
+  - `rescaling_scale` (array): CFG rescaling factors
+  - `guidance_timesteps` (array): Timestep breakpoints
+  - `skip_block_list` (array): Transformer blocks to skip per stage
+  - `num_inference_steps` (integer): Total denoising steps
+  - `skip_final_inference_steps` (integer): Steps to skip at end
+  - `skip_initial_inference_steps` (integer): Steps to skip at start
+  - `cfg_star_rescale` (boolean): Enable CFG* rescaling
+</ParamField>
+
+### Multi-scale second pass parameters
+
+<ParamField path="second_pass" type="object">
+  Configuration for the spatial upscaling second pass.
+  
+  **Properties:**
+  - `guidance_scale` (array): Guidance scales
+  - `stg_scale` (array): STG scales
+  - `rescaling_scale` (array): Rescaling factors
+  - `guidance_timesteps` (array): Timestep breakpoints
+  - `skip_block_list` (array): Blocks to skip
+  - `num_inference_steps` (integer): Total steps
+  - `skip_initial_inference_steps` (integer): Steps to skip at start
+  - `skip_final_inference_steps` (integer): Steps to skip at end
+  - `cfg_star_rescale` (boolean): Enable CFG* rescaling
+</ParamField>
+
+### Prompt enhancement parameters
+
+<ParamField path="prompt_enhancement_words_threshold" type="integer" default={120}>
+  Minimum word count to trigger automatic prompt enhancement. Set to 0 to disable.
+</ParamField>
+
+### Advanced parameters
+
+<ParamField path="stg_mode" type="string" default="attention_values">
+  STG application mode. Options: `attention_values`, `hidden_states`.
+</ParamField>
+
+<ParamField path="decode_timestep" type="float" default={0.05}>
+  Timestep for VAE decoding.
+</ParamField>
+
+<ParamField path="decode_noise_scale" type="float" default={0.025}>
+  Noise scale for VAE decoding.
+</ParamField>
+
+### Conditioning parameters (I2V)
+
+<ParamField path="conditioning_media_paths" type="array" default={null}>
+  Paths to conditioning images for image-to-video generation. Example: `["image.jpg"]`.
+</ParamField>
+
+<ParamField path="conditioning_start_frames" type="array" default={[0]}>
+  Starting frame indices for each conditioning image.
+</ParamField>
+
+### Performance parameters
+
+<ParamField path="weights_dtype" type="string" default="bfloat16">
+  Data type for model weights.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for activations.
+</ParamField>
+
+<ParamField path="attention" type="string" default="flash">
+  Attention implementation. Options: `flash`, `dot_product`.
+</ParamField>
+
+### Parallelism parameters
+
+<ParamField path="ici_fsdp_parallelism" type="integer" default={-1}>
+  FSDP parallelism. Use -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_data_parallelism" type="integer" default={1}>
+  Data parallelism across devices.
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="integer" default={1}>
+  Batch size per device.
+</ParamField>
+
+### System parameters
+
+<ParamField path="run_name" type="string" required>
+  Unique run identifier.
+</ParamField>
+
+<ParamField path="output_dir" type="string" required>
+  Output directory for generated videos.
+</ParamField>
+
+<ParamField path="seed" type="integer" default={10}>
+  Random seed for reproducibility.
+</ParamField>
+
+<ParamField path="jax_cache_dir" type="string" default="">
+  JAX compilation cache directory.
+</ParamField>
+
+<ParamField path="hardware" type="string" default="tpu">
+  Hardware type. Options: `tpu`, `gpu`.
+</ParamField>
+
+## Output
+
+Videos are saved in `outputs/YYYY-MM-DD/` directory with descriptive filenames based on the prompt:
+- Videos: `video_output_{i}_{prompt_words}_{height}x{width}x{frames}_{index}.mp4`
+- Images (single frame): `image_output_{i}_{prompt_words}_{height}x{width}x{frames}_{index}.png`
+
+## Multi-scale pipeline
+
+LTX-Video's multi-scale approach:
+
+1. **First pass**: Generates video at lower resolution with dynamic guidance scaling across 7 stages
+2. **Second pass**: Upscales spatially using a specialized upscaler model
+
+This approach enables:
+- Higher quality output through iterative refinement
+- Better temporal consistency
+- Efficient use of compute resources
+
+## Advanced features
+
+### Semantic Temporal Guidance (STG)
+
+STG improves temporal coherence by applying guidance at different scales throughout the denoising process. Configure via `stg_scale` arrays in first/second pass configs.
+
+### Block skipping
+
+Selectively skip transformer blocks at different stages to optimize speed/quality tradeoff. Configure via `skip_block_list` arrays.
+
+### CFG* rescaling
+
+Advanced classifier-free guidance rescaling technique. Enable with `cfg_star_rescale: True`.
+
+## Implementation details
+
+LTX-Video features:
+- 13B parameter transformer model
+- T5-XXL text encoder
+- 3D VAE for video compression
+- Multi-scale generation pipeline
+- Advanced guidance scheduling
+- Optional prompt enhancement with Florence-2 and Llama
+- Gaussian blur and CRF compression preprocessing
+
+See source: `~/workspace/source/src/maxdiffusion/generate_ltx_video.py:1`

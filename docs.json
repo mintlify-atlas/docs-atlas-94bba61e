@@ -1,122 +1,147 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "MaxDiffusion",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#4285F4",
+    "light": "#669DF6",
+    "dark": "#1A73E8"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/AI-Hypercomputer/maxdiffusion"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/AI-Hypercomputer/maxdiffusion"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Getting Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/architecture",
+              "concepts/models",
+              "concepts/parallelism",
+              "concepts/attention-mechanisms"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Training",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "training/overview",
+              "training/stable-diffusion",
+              "training/sdxl",
+              "training/flux",
+              "training/wan",
+              "training/dreambooth"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Inference",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "inference/overview",
+              "inference/stable-diffusion",
+              "inference/sdxl",
+              "inference/flux",
+              "inference/wan",
+              "inference/ltx-video",
+              "inference/controlnet"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/lora",
+              "advanced/multi-lora",
+              "advanced/quantization",
+              "advanced/profiling",
+              "advanced/checkpointing"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/single-host",
+              "deployment/multihost",
+              "deployment/xpk",
+              "deployment/dgx-spark"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/optimization",
+              "guides/data-preprocessing",
+              "guides/troubleshooting"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Training Scripts",
             "pages": [
-              "api-reference/introduction"
+              "api/train",
+              "api/train-sdxl",
+              "api/train-flux",
+              "api/train-wan"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Generation Scripts",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/generate",
+              "api/generate-sdxl",
+              "api/generate-flux",
+              "api/generate-wan",
+              "api/generate-ltx-video"
+            ]
+          },
+          {
+            "group": "Models",
+            "pages": [
+              "api/models/unet",
+              "api/models/vae",
+              "api/models/transformer",
+              "api/models/controlnet"
+            ]
+          },
+          {
+            "group": "Pipelines",
+            "pages": [
+              "api/pipelines/stable-diffusion",
+              "api/pipelines/sdxl",
+              "api/pipelines/flux",
+              "api/pipelines/wan"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "api/config/base-config",
+              "api/config/parallelism",
+              "api/config/scheduler"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

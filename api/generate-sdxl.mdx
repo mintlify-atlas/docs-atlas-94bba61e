@@ -1,0 +1,198 @@
+---
+title: 'generate_sdxl.py'
+description: 'Stable Diffusion XL inference script for high-resolution image generation'
+---
+
+## Overview
+
+The `generate_sdxl.py` script provides inference capabilities for Stable Diffusion XL models. It supports single and multi-host deployment with JAX sharding annotations, LoRA loading, and SDXL Lightning for fast inference.
+
+## Usage
+
+### Basic command
+
+```bash
+python -m src.maxdiffusion.generate_sdxl \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="my_run"
+```
+
+### With LoRA
+
+```bash
+python src/maxdiffusion/generate_sdxl.py \
+  src/maxdiffusion/configs/base_xl.yml \
+  run_name="test-lora" \
+  output_dir=/tmp/ \
+  num_inference_steps=30 \
+  prompt="ultra detailed diagram blueprint of a papercut cat" \
+  lora_config='{"lora_model_name_or_path" : ["path/to/lora.safetensors"], "weight_name" : ["lora.safetensors"], "adapter_name" : ["my-lora"], "scale": [0.8], "from_pt": ["true"]}'
+```
+
+### SDXL Lightning
+
+```bash
+python -m src.maxdiffusion.generate_sdxl \
+  src/maxdiffusion/configs/base_xl_lightning.yml \
+  run_name="my_run" \
+  lightning_repo="ByteDance/SDXL-Lightning" \
+  lightning_ckpt="sdxl_lightning_4step_unet.safetensors"
+```
+
+## Configuration parameters
+
+### Model parameters
+
+<ParamField path="pretrained_model_name_or_path" type="string" default="stabilityai/stable-diffusion-xl-base-1.0">
+  Path or identifier for the pretrained SDXL model.
+</ParamField>
+
+<ParamField path="revision" type="string" default="refs/pr/95">
+  Model revision to use from HuggingFace.
+</ParamField>
+
+<ParamField path="from_pt" type="boolean" default={false}>
+  Set to `true` to load weights from PyTorch format.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Text prompt describing the image to generate.
+</ParamField>
+
+<ParamField path="negative_prompt" type="string" default="purple, red">
+  Negative prompt to guide what should not appear in the image.
+</ParamField>
+
+<ParamField path="num_inference_steps" type="integer" default={20}>
+  Number of denoising steps. SDXL typically requires fewer steps than SD 2.x.
+</ParamField>
+
+<ParamField path="guidance_scale" type="float" default={9.0}>
+  Classifier-free guidance scale. SDXL works well with higher values (7-12).
+</ParamField>
+
+<ParamField path="guidance_rescale" type="float" default={0.0}>
+  Guidance rescale factor. Recommended value is 0.7 for best results.
+</ParamField>
+
+<ParamField path="do_classifier_free_guidance" type="boolean" default={true}>
+  Enable classifier-free guidance for better prompt adherence.
+</ParamField>
+
+<ParamField path="resolution" type="integer" default={1024}>
+  Output image resolution in pixels. SDXL is optimized for 1024x1024.
+</ParamField>
+
+### Performance parameters
+
+<ParamField path="weights_dtype" type="string" default="float32">
+  Data type for model weights. Use `bfloat16` on TPUv5e for optimal performance.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for layer activations.
+</ParamField>
+
+<ParamField path="attention" type="string" default="dot_product">
+  Attention mechanism. Options: `dot_product`, `flash`, `cudnn_flash_te` (GPU only).
+</ParamField>
+
+<ParamField path="split_head_dim" type="boolean" default={true}>
+  Enable head dimension splitting for better performance.
+</ParamField>
+
+### LoRA parameters
+
+<ParamField path="lora_config" type="object">
+  Configuration for loading LoRA adapters. Supports multiple LoRAs.
+  
+  **Properties:**
+  - `lora_model_name_or_path` (array): Paths to LoRA models
+  - `weight_name` (array): LoRA weight filenames
+  - `adapter_name` (array): Unique names for each adapter
+  - `scale` (array): Scale factors (0.0-1.0) for each LoRA
+  - `from_pt` (array): Whether to load from PyTorch format
+  
+  **Example:**
+  ```json
+  {
+    "lora_model_name_or_path": ["ByteDance/Hyper-SD"],
+    "weight_name": ["Hyper-SDXL-2steps-lora.safetensors"],
+    "adapter_name": ["hyper-sdxl"],
+    "scale": [0.7],
+    "from_pt": ["true"]
+  }
+  ```
+</ParamField>
+
+### SDXL Lightning parameters
+
+<ParamField path="lightning_repo" type="string" default="">
+  HuggingFace repository for SDXL Lightning weights. Example: `ByteDance/SDXL-Lightning`.
+</ParamField>
+
+<ParamField path="lightning_ckpt" type="string" default="">
+  Checkpoint filename. Options: `sdxl_lightning_2step_unet.safetensors`, `sdxl_lightning_4step_unet.safetensors`, `sdxl_lightning_8step_unet.safetensors`.
+</ParamField>
+
+<ParamField path="lightning_from_pt" type="boolean" default={true}>
+  Load Lightning weights from PyTorch format.
+</ParamField>
+
+### Parallelism parameters
+
+<ParamField path="ici_data_parallelism" type="integer" default={-1}>
+  Data parallelism across ICI devices. Use -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_fsdp_parallelism" type="integer" default={1}>
+  FSDP parallelism across ICI devices.
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="integer" default={2}>
+  Batch size per device. SDXL requires more memory than SD 2.x.
+</ParamField>
+
+### System parameters
+
+<ParamField path="run_name" type="string" required>
+  Unique identifier for the inference run.
+</ParamField>
+
+<ParamField path="output_dir" type="string" default="sdxl-model-finetuned">
+  Directory to save generated images.
+</ParamField>
+
+<ParamField path="seed" type="integer" default={0}>
+  Random seed for reproducible generation.
+</ParamField>
+
+<ParamField path="jax_cache_dir" type="string" default="">
+  Directory for JAX compilation cache.
+</ParamField>
+
+## Output
+
+Generated images are saved as PNG files with the naming pattern `image_sdxl_{i}.png`.
+
+## Performance data
+
+SDXL inference performance varies by hardware and configuration. Typical results:
+
+- **TPU v4-8**: ~20-30 seconds for 20 steps at 1024x1024
+- **TPU v5e**: Optimized with bfloat16 weights
+
+## Implementation details
+
+The script:
+1. Loads SDXL pipeline with dual text encoders (CLIP ViT-L and OpenCLIP ViT-bigG)
+2. Optionally loads LoRA adapters or Lightning weights
+3. Creates inference states with proper sharding
+4. Encodes prompts with both text encoders and generates pooled embeddings
+5. Adds time embeddings for SDXL's conditioning
+6. Runs denoising loop with optional classifier-free guidance
+7. Decodes latents and saves images
+
+See source: `~/workspace/source/src/maxdiffusion/generate_sdxl.py:1`

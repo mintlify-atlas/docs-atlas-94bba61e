@@ -1,0 +1,148 @@
+---
+title: Transformer models
+description: Reference documentation for transformer architectures in MaxDiffusion
+---
+
+MaxDiffusion includes transformer-based models for diffusion, including the Flux transformer architecture.
+
+## FluxTransformer2DModel
+
+The Flux transformer model for text-to-image generation.
+
+### Model architecture
+
+The Flux transformer consists of:
+- **Patch embedding**: Converts input into patches
+- **Time and text embeddings**: Combined timestep and text projection embeddings
+- **Position embeddings**: Rotary position embeddings (RoPE)
+- **Double blocks**: MMDiT blocks with separate image and text streams
+- **Single blocks**: Single-stream transformer blocks
+- **Output projection**: Projects back to patch space
+
+Located in `src/maxdiffusion/models/flux/transformers/transformer_flux_flax.py:298`
+
+### Configuration parameters
+
+<ParamField path="patch_size" type="int" default="1">
+  Patch size to turn the input data into small patches
+</ParamField>
+
+<ParamField path="in_channels" type="int" default="64">
+  The number of channels in the input
+</ParamField>
+
+<ParamField path="num_layers" type="int" default="19">
+  The number of layers of MMDiT blocks to use
+</ParamField>
+
+<ParamField path="num_single_layers" type="int" default="38">
+  The number of layers of single DiT blocks to use
+</ParamField>
+
+<ParamField path="attention_head_dim" type="int" default="128">
+  The number of channels in each head
+</ParamField>
+
+<ParamField path="num_attention_heads" type="int" default="24">
+  The number of heads to use for multi-head attention
+</ParamField>
+
+<ParamField path="joint_attention_dim" type="int" default="4096">
+  The number of encoder_hidden_states dimensions to use
+</ParamField>
+
+<ParamField path="pooled_projection_dim" type="int" default="768">
+  Number of dimensions to use when projecting the pooled_projections
+</ParamField>
+
+<ParamField path="guidance_embeds" type="bool" default="False">
+  Whether to use guidance embeddings
+</ParamField>
+
+<ParamField path="axes_dims_rope" type="Tuple[int]" default="(16, 56, 56)">
+  Dimensions for rotary position embeddings
+</ParamField>
+
+<ParamField path="attention_kernel" type="str" default="dot_product">
+  Attention mechanism to use
+</ParamField>
+
+<ParamField path="flash_min_seq_length" type="int" default="4096">
+  Minimum sequence length required to apply flash attention
+</ParamField>
+
+<ParamField path="mesh" type="jax.sharding.Mesh">
+  JAX mesh for distributed computation
+</ParamField>
+
+### Methods
+
+#### `__call__`
+
+Forward pass through the Flux transformer.
+
+**Parameters:**
+
+<ParamField path="hidden_states" type="jnp.ndarray">
+  Input latent representations
+</ParamField>
+
+<ParamField path="encoder_hidden_states" type="jnp.ndarray">
+  Text encoder hidden states
+</ParamField>
+
+<ParamField path="pooled_projections" type="jnp.ndarray">
+  Pooled text embeddings
+</ParamField>
+
+<ParamField path="timestep" type="jnp.ndarray">
+  Timestep for the diffusion process
+</ParamField>
+
+<ParamField path="img_ids" type="jnp.ndarray">
+  Image position IDs
+</ParamField>
+
+<ParamField path="txt_ids" type="jnp.ndarray">
+  Text position IDs
+</ParamField>
+
+<ParamField path="guidance" type="jnp.ndarray">
+  Guidance scale values
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="sample" type="jnp.ndarray">
+  Predicted noise or velocity with shape matching the input
+</ResponseField>
+
+## FluxTransformerBlock
+
+Double-stream transformer block (MMDiT architecture) located at `src/maxdiffusion/models/flux/transformers/transformer_flux_flax.py:153`.
+
+### Features
+
+- Dual processing streams for images and text
+- Adaptive layer normalization
+- Cross-attention between modalities
+- MLP feedforward networks
+
+## FluxSingleTransformerBlock
+
+Single-stream transformer block located at `src/maxdiffusion/models/flux/transformers/transformer_flux_flax.py:53`.
+
+### Features
+
+- Combined image and text processing
+- Adaptive layer normalization
+- Attention with RoPE
+- Gated MLP activation
+
+## Transformer2DModelOutput
+
+Output dataclass for transformer models located at `src/maxdiffusion/models/flux/transformers/transformer_flux_flax.py:41`.
+
+<ResponseField name="sample" type="jnp.ndarray">
+  The hidden states output with shape `(batch_size, num_channels, height, width)`
+</ResponseField>

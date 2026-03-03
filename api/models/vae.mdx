@@ -1,0 +1,138 @@
+---
+title: Variational autoencoder (VAE)
+description: Reference documentation for VAE models in MaxDiffusion
+---
+
+The `FlaxAutoencoderKL` is a VAE model with KL loss for encoding and decoding images to and from latent representations.
+
+## FlaxAutoencoderKL
+
+### Model architecture
+
+The VAE consists of:
+- **Encoder**: Converts images to latent representations using downsampling blocks
+- **Decoder**: Reconstructs images from latents using upsampling blocks
+- **Diagonal Gaussian distribution**: For sampling latents from the distribution
+- **Quantization convolutions**: Optional 1x1 convolutions before/after latent space
+
+Located in `src/maxdiffusion/models/vae_flax.py:764`
+
+### Configuration parameters
+
+<ParamField path="in_channels" type="int" default="3">
+  Number of channels in the input image
+</ParamField>
+
+<ParamField path="out_channels" type="int" default="3">
+  Number of channels in the output
+</ParamField>
+
+<ParamField path="down_block_types" type="Tuple[str]" default="('DownEncoderBlock2D',)">
+  Tuple of downsample block types
+</ParamField>
+
+<ParamField path="up_block_types" type="Tuple[str]" default="('UpDecoderBlock2D',)">
+  Tuple of upsample block types
+</ParamField>
+
+<ParamField path="block_out_channels" type="Tuple[int]" default="(64,)">
+  Tuple of block output channels
+</ParamField>
+
+<ParamField path="layers_per_block" type="int" default="1">
+  Number of ResNet layers per block
+</ParamField>
+
+<ParamField path="latent_channels" type="int" default="4">
+  Number of channels in the latent space
+</ParamField>
+
+<ParamField path="norm_num_groups" type="int" default="32">
+  The number of groups for normalization
+</ParamField>
+
+<ParamField path="scaling_factor" type="float" default="0.18215">
+  The component-wise standard deviation of the trained latent space. Used to scale the latent space to have unit variance when training the diffusion model
+</ParamField>
+
+### Methods
+
+#### `encode`
+
+Encodes an image into its latent representation.
+
+**Parameters:**
+
+<ParamField path="sample" type="jnp.ndarray">
+  Input image tensor
+</ParamField>
+
+<ParamField path="deterministic" type="bool" default="True">
+  Whether to use deterministic encoding
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="latent_dist" type="FlaxDiagonalGaussianDistribution">
+  Encoded outputs represented as the mean and logvar. Allows for sampling latents from the distribution
+</ResponseField>
+
+#### `decode`
+
+Decodes latent representations into images.
+
+**Parameters:**
+
+<ParamField path="latents" type="jnp.ndarray">
+  Latent representations to decode
+</ParamField>
+
+<ParamField path="deterministic" type="bool" default="True">
+  Whether to use deterministic decoding
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="sample" type="jnp.ndarray">
+  The decoded output sample from the last layer of the model with shape `(batch_size, num_channels, height, width)`
+</ResponseField>
+
+## FlaxDiagonalGaussianDistribution
+
+Distribution class for VAE latent space located at `src/maxdiffusion/models/vae_flax.py:725`.
+
+### Methods
+
+#### `sample`
+
+Samples from the distribution.
+
+<ParamField path="key" type="jax.random.PRNGKey">
+  Random key for sampling
+</ParamField>
+
+<ResponseField name="sample" type="jnp.ndarray">
+  Sampled latent tensor
+</ResponseField>
+
+#### `mode`
+
+Returns the mode of the distribution (mean).
+
+<ResponseField name="mode" type="jnp.ndarray">
+  The mean of the distribution
+</ResponseField>
+
+## Sub-components
+
+### FlaxEncoder
+
+VAE encoder implementation located at `src/maxdiffusion/models/vae_flax.py:483`.
+
+### FlaxDecoder
+
+VAE decoder implementation located at `src/maxdiffusion/models/vae_flax.py:603`.
+
+### FlaxResnetBlock2D
+
+2D ResNet block with group normalization located at `src/maxdiffusion/models/vae_flax.py:130`.

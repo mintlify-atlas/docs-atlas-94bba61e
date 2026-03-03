@@ -1,0 +1,296 @@
+---
+title: WAN pipeline
+description: Reference documentation for the WAN video generation pipeline
+---
+
+The `WanPipeline` is a text-to-video and image-to-video generation pipeline using the WAN (World Action Network) transformer.
+
+## WanPipeline
+
+Located in `src/maxdiffusion/pipelines/wan/wan_pipeline.py:191`
+
+### Components
+
+<ParamField path="tokenizer" type="AutoTokenizer">
+  UMT5 tokenizer for text encoding
+</ParamField>
+
+<ParamField path="text_encoder" type="UMT5EncoderModel">
+  UMT5 text encoder (google/umt5-xxl)
+</ParamField>
+
+<ParamField path="vae" type="AutoencoderKLWan">
+  Video VAE for encoding/decoding video frames
+</ParamField>
+
+<ParamField path="vae_cache" type="AutoencoderKLWanCache">
+  Cache for VAE intermediate activations
+</ParamField>
+
+<ParamField path="scheduler" type="FlaxUniPCMultistepScheduler">
+  UniPC multistep scheduler for diffusion
+</ParamField>
+
+<ParamField path="scheduler_state" type="UniPCMultistepSchedulerState">
+  Scheduler state
+</ParamField>
+
+<ParamField path="mesh" type="Mesh">
+  JAX mesh for distributed computation
+</ParamField>
+
+<ParamField path="image_processor" type="CLIPImageProcessor">
+  CLIP image processor (for I2V models)
+</ParamField>
+
+<ParamField path="image_encoder" type="FlaxCLIPVisionModel">
+  CLIP image encoder (for I2V models)
+</ParamField>
+
+### Methods
+
+#### `encode_prompt`
+
+Encodes text prompts using T5 encoder.
+
+**Parameters:**
+
+<ParamField path="prompt" type="str | List[str]">
+  The prompt or prompts to guide video generation
+</ParamField>
+
+<ParamField path="negative_prompt" type="str | List[str]">
+  Negative prompts for classifier-free guidance
+</ParamField>
+
+<ParamField path="num_videos_per_prompt" type="int" default="1">
+  Number of videos to generate per prompt
+</ParamField>
+
+<ParamField path="max_sequence_length" type="int" default="226">
+  Maximum sequence length for text encoder
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="prompt_embeds" type="jnp.ndarray">
+  Encoded prompt embeddings
+</ResponseField>
+
+<ResponseField name="negative_prompt_embeds" type="jnp.ndarray">
+  Encoded negative prompt embeddings
+</ResponseField>
+
+#### `encode_image`
+
+Encodes images using CLIP encoder (for WAN 2.1 I2V).
+
+**Parameters:**
+
+<ParamField path="image" type="PIL.Image | List[PIL.Image]">
+  Input image(s) for image-to-video generation
+</ParamField>
+
+<ParamField path="num_videos_per_prompt" type="int" default="1">
+  Number of videos per prompt
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="image_embeds" type="jnp.ndarray">
+  CLIP image embeddings
+</ResponseField>
+
+#### `prepare_latents`
+
+Prepares initial latent tensors for video generation.
+
+**Parameters:**
+
+<ParamField path="batch_size" type="int">
+  Batch size
+</ParamField>
+
+<ParamField path="vae_scale_factor_temporal" type="int">
+  Temporal downsampling factor
+</ParamField>
+
+<ParamField path="vae_scale_factor_spatial" type="int">
+  Spatial downsampling factor
+</ParamField>
+
+<ParamField path="height" type="int" default="480">
+  Height of generated videos
+</ParamField>
+
+<ParamField path="width" type="int" default="832">
+  Width of generated videos
+</ParamField>
+
+<ParamField path="num_frames" type="int" default="81">
+  Number of frames in the video
+</ParamField>
+
+<ParamField path="num_channels_latents" type="int" default="16">
+  Number of channels in latent space
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="latents" type="jnp.ndarray">
+  Random latent tensors for video generation
+</ResponseField>
+
+#### `prepare_latents_i2v_base`
+
+Prepares latent conditioning for image-to-video generation.
+
+**Parameters:**
+
+<ParamField path="image" type="jax.Array">
+  Input image tensor
+</ParamField>
+
+<ParamField path="num_frames" type="int">
+  Number of frames to generate
+</ParamField>
+
+<ParamField path="dtype" type="jnp.dtype">
+  Data type for latents
+</ParamField>
+
+<ParamField path="last_image" type="jax.Array">
+  Optional last frame for video bookending
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="latent_condition" type="jnp.ndarray">
+  VAE encoded latents of the image(s)
+</ResponseField>
+
+<ResponseField name="video_condition" type="jnp.ndarray">
+  Input to the VAE
+</ResponseField>
+
+### Class methods
+
+#### `load_transformer`
+
+Loads the WAN transformer model with sharding.
+
+**Parameters:**
+
+<ParamField path="devices_array" type="np.array">
+  Array of devices
+</ParamField>
+
+<ParamField path="mesh" type="Mesh">
+  JAX mesh
+</ParamField>
+
+<ParamField path="rngs" type="nnx.Rngs">
+  Random number generators
+</ParamField>
+
+<ParamField path="config" type="HyperParameters">
+  Configuration
+</ParamField>
+
+<ParamField path="restored_checkpoint" type="dict">
+  Optional checkpoint to restore from
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="wan_transformer" type="WanModel">
+  Loaded and sharded transformer model
+</ResponseField>
+
+#### `load_vae`
+
+Loads the video VAE with sharding.
+
+**Returns:**
+
+<ResponseField name="wan_vae" type="AutoencoderKLWan">
+  Loaded video VAE
+</ResponseField>
+
+<ResponseField name="vae_cache" type="AutoencoderKLWanCache">
+  VAE cache for intermediate activations
+</ResponseField>
+
+#### `quantize_transformer`
+
+Quantizes the transformer using Qwix.
+
+**Parameters:**
+
+<ParamField path="config" type="HyperParameters">
+  Configuration with quantization settings
+</ParamField>
+
+<ParamField path="model" type="WanModel">
+  Model to quantize
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="quantized_model" type="WanModel">
+  Quantized model
+</ResponseField>
+
+## Key features
+
+- **Video generation**: Generates high-quality videos from text or images
+- **Temporal consistency**: Uses 3D attention for temporal coherence
+- **Flow matching scheduler**: Uses flow matching for efficient sampling
+- **Multiple model variants**: Supports WAN 2.1 and 2.2 architectures
+- **I2V conditioning**: Image-to-video via CLIP embeddings (2.1) or VAE latents (2.2)
+- **Quantization support**: FP8/INT8 quantization via Qwix
+
+## Model variants
+
+### WAN 2.1
+- Uses CLIP image encoder for I2V conditioning
+- Image embeddings are passed to transformer
+
+### WAN 2.2
+- Uses VAE latent conditioning for I2V
+- No CLIP image encoder required
+
+## Example usage
+
+```python
+from maxdiffusion import WanPipeline
+
+# Load pipeline components
+config = HyperParameters(
+    pretrained_model_name_or_path="genmo/mochi-1-preview",
+    model_type="T2V",
+    resolution=480,
+    num_frames=81
+)
+
+devices_array = create_device_mesh(config)
+mesh = Mesh(devices_array, config.mesh_axes)
+
+# Initialize pipeline
+components = WanPipeline._create_common_components(config)
+pipeline = WanPipeline(**components, config=config)
+
+# Load transformer
+wan_transformer = WanPipeline.load_transformer(
+    devices_array, mesh, rngs, config
+)
+
+# Generate video
+videos = pipeline(
+    prompt="a cat playing piano",
+    num_inference_steps=50,
+    height=480,
+    width=832,
+    num_frames=81
+)
+```

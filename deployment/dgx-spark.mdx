@@ -1,0 +1,230 @@
+---
+title: DGX Spark deployment
+description: Run MaxDiffusion on NVIDIA DGX Spark GPU workstations
+---
+
+This guide provides step-by-step instructions for setting up and running MaxDiffusion on NVIDIA DGX Spark, an ARM-based workstation with NVIDIA GPU support.
+
+## Prerequisites
+
+- Access to [NVIDIA DGX Spark Box](https://www.nvidia.com/en-us/products/workstations/dgx-spark/)
+- MaxDiffusion source code cloned on the machine (dgx_spark branch)
+- Internet connection for Docker build and model downloads
+
+## Build Docker image
+
+<Steps>
+  <Step title="Create the Dockerfile">
+    In the root directory of your MaxDiffusion project, create a file named `box.Dockerfile`:
+
+    ```docker
+    # Nvidia Base image for ARM64 with CUDA support
+    FROM nvcr.io/nvidia/cuda-dl-base@sha256:3631d968c12ef22b1dfe604de63dbc71a55f3ffcc23a085677a6d539d98884a4
+
+    # Set environment variables
+    ENV PIP_BREAK_SYSTEM_PACKAGES=1
+    ENV DEBIAN_FRONTEND=noninteractive
+
+    # Install system-level dependencies
+    RUN apt-get update && apt-get install -y python3 python3-pip
+    RUN update-alternatives --install /usr/bin/python python /usr/bin/python3 1 && \
+        update-alternatives --install /usr/bin/pip pip /usr/bin/pip3 1
+
+    WORKDIR /app
+
+    # Copy and install requirements
+    COPY requirements.txt .
+    RUN pip install -r requirements.txt
+
+    # Install JAX with CUDA support
+    RUN pip install "jax[cuda13-local]==0.7.2"
+
+    # Copy application source code
+    COPY . .
+
+    # Install MaxDiffusion
+    RUN pip install .
+
+    CMD ["/bin/bash"]
+    ```
+
+    This Dockerfile is optimized for build speed by caching dependencies, ensuring code changes don't require a full reinstall.
+  </Step>
+
+  <Step title="Build the image">
+    Navigate to the root directory of MaxDiffusion and run:
+
+    ```bash
+    docker build -f box.Dockerfile -t maxdiffusion-arm-gpu .
+    ```
+
+    The first build may take some time. Subsequent builds will be faster if you only change source code.
+  </Step>
+</Steps>
+
+## Run image generation
+
+<Steps>
+  <Step title="Create output directory">
+    Create a directory to store generated images:
+
+    ```bash
+    mkdir -p ~/maxdiffusion_output
+    ```
+  </Step>
+
+  <Step title="Launch container">
+    Start an interactive session with volume mounts:
+
+    ```bash
+    docker run -it --gpus all \
+      -v ~/.cache/huggingface:/root/.cache/huggingface \
+      -v ~/maxdiffusion_output:/tmp \
+      maxdiffusion-arm-gpu
+    ```
+
+    This command:
+    - Mounts your Hugging Face cache to avoid re-downloading models
+    - Mounts the output directory for easy access to generated images
+  </Step>
+
+  <Step title="Login to Hugging Face (first-time setup)">
+    Inside the Docker container, authenticate with Hugging Face:
+
+    ```bash
+    huggingface-cli login
+    ```
+
+    When prompted:
+    1. Go to [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
+    2. Copy your token (or create a new one with write permissions)
+    3. Paste the token into the terminal and press Enter
+  </Step>
+
+  <Step title="Generate images">
+    Run the image generation script:
+
+    ```bash
+    NVTE_FRAMEWORK=JAX \
+    NVTE_FUSED_ATTN=1 \
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    python src/maxdiffusion/generate_flux.py \
+      src/maxdiffusion/configs/base_flux_dev.yml \
+      jax_cache_dir=/tmp/cache_dir \
+      run_name=flux_test \
+      output_dir=/tmp/ \
+      prompt='A cute corgi lives in a house made out of sushi, anime' \
+      num_inference_steps=28 \
+      split_head_dim=True \
+      per_device_batch_size=1 \
+      attention="cudnn_flash_te" \
+      hardware=gpu
+    ```
+  </Step>
+</Steps>
+
+## Retrieve generated images
+
+<Steps>
+  <Step title="Find container ID">
+    Open a new terminal (keep the container running). Find your container ID:
+
+    ```bash
+    docker ps
+    ```
+
+    Look for the container with image `maxdiffusion-arm-gpu` and note its ID (e.g., `9049895399fc`).
+  </Step>
+
+  <Step title="Copy from container to DGX Spark">
+    Copy the generated image and fix permissions:
+
+    ```bash
+    # Copy the file
+    docker cp 9049895399fc:/app/flux_0.png /tmp/flux_0.png
+
+    # Change ownership
+    sudo chown username:username /tmp/flux_0.png
+    ```
+  </Step>
+
+  <Step title="Copy from DGX Spark to your laptop">
+    On your laptop, use scp to download the file:
+
+    ```bash
+    scp username@spark:/tmp/flux_0.png .
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="pip: command not found during Docker build">
+    **Cause**: The base Docker image doesn't have pip in the system's default PATH.
+
+    **Solution**: The provided Dockerfile fixes this by installing `python3-pip` and using `update-alternatives` to create symbolic links.
+  </Accordion>
+
+  <Accordion title="externally-managed-environment during pip install">
+    **Cause**: Newer versions of Debian/Ubuntu protect system Python packages.
+
+    **Solution**: The `ENV PIP_BREAK_SYSTEM_PACKAGES=1` line in the Dockerfile bypasses this protection within the container.
+  </Accordion>
+
+  <Accordion title="OSError: not a valid model identifier">
+    **Cause**: The script cannot find models locally and tries to download from Hugging Face.
+
+    **Solution**: Launch the container with `-v ~/.cache/huggingface:/root/.cache/huggingface` to mount your local model cache.
+  </Accordion>
+
+  <Accordion title="Permission denied when accessing copied files">
+    **Cause**: Files copied with `docker cp` are owned by root by default.
+
+    **Solution**: Run `sudo chown your_user:your_user /path/to/file` after copying.
+  </Accordion>
+
+  <Accordion title="Out-of-memory (OOM) errors">
+    **Problem**: Processes require more memory than available RAM.
+
+    **Solution**: Add swap memory as a safety net.
+
+    Create a 64GB swap file:
+
+    ```bash
+    # Allocate swap file
+    sudo fallocate -l 64G /swapfile
+
+    # Set secure permissions
+    sudo chmod 600 /swapfile
+
+    # Format as swap space
+    sudo mkswap /swapfile
+
+    # Enable swap
+    sudo swapon /swapfile
+
+    # Make permanent
+    echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    ```
+
+    Verify swap is active:
+
+    ```bash
+    free -h
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance notes
+
+- The DGX Spark ARM architecture provides unique advantages for edge deployment
+- Use fused attention via TransformerEngine for optimal GPU performance
+- Cache models locally to avoid re-downloading on each run
+- Consider swap memory for memory-intensive workloads
+
+## Next steps
+
+For TPU deployment or cloud-based training, see:
+- [Single host deployment](/deployment/single-host)
+- [XPK deployment](/deployment/xpk)

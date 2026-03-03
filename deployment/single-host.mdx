@@ -1,0 +1,84 @@
+---
+title: Single host deployment
+description: Run MaxDiffusion on a single TPU host for local development
+---
+
+Local development is a convenient way to run MaxDiffusion on a single host. This deployment method doesn't scale to multiple hosts but is ideal for development and testing.
+
+## Prerequisites
+
+Minimum requirements:
+- Ubuntu Version 22.04
+- Python 3.12
+- Tensorflow >= 2.12.0
+
+## Running on Cloud TPUs
+
+<Steps>
+  <Step title="Create and SSH to a single-host TPU">
+    Create a single-host TPU (v6-8) using the following command:
+
+    ```bash
+    gcloud compute tpus tpu-vm create TPU_NAME \
+      --zone=ZONE \
+      --accelerator-type=v6-8 \
+      --version=v2-alpha-tpuv6e
+    ```
+
+    Then SSH into your TPU:
+
+    ```bash
+    gcloud compute tpus tpu-vm ssh TPU_NAME --zone=ZONE
+    ```
+
+    <Note>
+      Find zones that support v6 (Trillium) TPUs in the [regions and zones documentation](https://cloud.google.com/tpu/docs/regions-zones).
+    </Note>
+
+    We recommend using the base VM image "v2-alpha-tpuv6e", which meets the version requirements.
+  </Step>
+
+  <Step title="Clone MaxDiffusion">
+    Clone the MaxDiffusion repository on your TPU VM:
+
+    ```bash
+    git clone https://github.com/AI-Hypercomputer/maxdiffusion.git
+    cd maxdiffusion
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Within the root directory of the MaxDiffusion git repo, install dependencies:
+
+    ```bash
+    # If a Python 3.12+ virtual environment doesn't already exist,
+    # you'll need to run the install command three times.
+    bash setup.sh MODE=stable DEVICE=tpu
+    ```
+
+    The setup script will:
+    - Install system dependencies
+    - Install JAX for TPU
+    - Install MaxDiffusion and its requirements
+  </Step>
+
+  <Step title="Activate your virtual environment">
+    Activate the virtual environment created during setup:
+
+    ```bash
+    # Replace with your virtual environment name if not using this default name
+    venv_name="maxdiffusion_venv"
+    source ~/$venv_name/bin/activate
+    ```
+  </Step>
+</Steps>
+
+## Next steps
+
+After completing the setup, you can:
+
+- Run inference on various models (Flux, SDXL, Stable Diffusion)
+- Train models on your single-host TPU
+- Scale to multihost deployment when needed
+
+For production workloads and multi-host training, see the [multihost deployment](/deployment/multihost) or [XPK deployment](/deployment/xpk) guides.

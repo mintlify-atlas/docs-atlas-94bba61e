@@ -1,0 +1,128 @@
+---
+title: UNet 2D condition model
+description: Reference documentation for the FlaxUNet2DConditionModel architecture
+---
+
+The `FlaxUNet2DConditionModel` is a conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a denoised sample.
+
+## FlaxUNet2DConditionModel
+
+### Model architecture
+
+The UNet architecture consists of:
+- **Input projection**: Convolutional layer that projects input channels to initial feature dimensions
+- **Time embedding**: Sinusoidal position embeddings for timestep conditioning
+- **Down blocks**: Sequence of downsampling blocks with optional cross-attention
+- **Mid block**: Middle block with cross-attention for processing bottleneck features
+- **Up blocks**: Sequence of upsampling blocks with optional cross-attention
+- **Output projection**: Final convolution layer with group normalization
+
+Located in `src/maxdiffusion/models/unet_2d_condition_flax.py:54`
+
+### Configuration parameters
+
+<ParamField path="sample_size" type="int" default="32">
+  The size of the input sample
+</ParamField>
+
+<ParamField path="in_channels" type="int" default="4">
+  The number of channels in the input sample
+</ParamField>
+
+<ParamField path="out_channels" type="int" default="4">
+  The number of channels in the output
+</ParamField>
+
+<ParamField path="down_block_types" type="Tuple[str]">
+  The tuple of downsample blocks to use. Defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`
+</ParamField>
+
+<ParamField path="up_block_types" type="Tuple[str]">
+  The tuple of upsample blocks to use. Defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`
+</ParamField>
+
+<ParamField path="block_out_channels" type="Tuple[int]" default="(320, 640, 1280, 1280)">
+  The tuple of output channels for each block
+</ParamField>
+
+<ParamField path="layers_per_block" type="int" default="2">
+  The number of layers per block
+</ParamField>
+
+<ParamField path="attention_head_dim" type="int | Tuple[int]" default="8">
+  The dimension of the attention heads
+</ParamField>
+
+<ParamField path="cross_attention_dim" type="int" default="1280">
+  The dimension of the cross attention features
+</ParamField>
+
+<ParamField path="dropout" type="float" default="0.0">
+  Dropout probability for down, up and bottleneck blocks
+</ParamField>
+
+<ParamField path="attention_kernel" type="str" default="dot_product">
+  Attention mechanism to use. Options: `dot_product`, `flash`
+</ParamField>
+
+<ParamField path="flash_min_seq_length" type="int" default="4096">
+  Minimum sequence length required to apply flash attention
+</ParamField>
+
+<ParamField path="mesh" type="jax.sharding.Mesh">
+  JAX mesh for distributed computation (required if attention is set to flash)
+</ParamField>
+
+<ParamField path="quant" type="AqtQuantization">
+  Configures AQT quantization from github.com/google/aqt
+</ParamField>
+
+### Methods
+
+#### `__call__`
+
+Forward pass through the UNet model.
+
+**Parameters:**
+
+<ParamField path="sample" type="jnp.ndarray">
+  Noisy inputs tensor of shape `(batch, channel, height, width)`
+</ParamField>
+
+<ParamField path="timesteps" type="jnp.ndarray | float | int">
+  Timesteps for the diffusion process
+</ParamField>
+
+<ParamField path="encoder_hidden_states" type="jnp.ndarray">
+  Encoder hidden states of shape `(batch_size, sequence_length, hidden_size)`
+</ParamField>
+
+<ParamField path="added_cond_kwargs" type="dict">
+  Additional embeddings that are added to the embeddings passed along to the UNet blocks
+</ParamField>
+
+<ParamField path="train" type="bool" default="False">
+  Use deterministic functions and disable dropout when not training
+</ParamField>
+
+**Returns:**
+
+<ResponseField name="sample" type="jnp.ndarray">
+  The hidden states output conditioned on encoder_hidden_states input. Output of last layer of model with shape `(batch_size, num_channels, height, width)`
+</ResponseField>
+
+## FlaxUNet2DConditionOutput
+
+Output class for the UNet model located at `src/maxdiffusion/models/unet_2d_condition_flax.py:41`.
+
+<ResponseField name="sample" type="jnp.ndarray">
+  The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
+</ResponseField>
+
+## JAX features
+
+The model supports inherent JAX features:
+- Just-In-Time (JIT) compilation
+- Automatic differentiation
+- Vectorization (vmap)
+- Parallelization (pmap)

@@ -1,0 +1,269 @@
+---
+title: Installation
+description: Set up MaxDiffusion on Cloud TPUs, GPUs, or local development
+---
+
+# Installation
+
+MaxDiffusion can be installed on Cloud TPUs, GPUs, or local machines. We recommend starting with a single TPU host for development before scaling to multi-host configurations.
+
+## System requirements
+
+- **Operating System**: Ubuntu 22.04 or later
+- **Python**: 3.12 or later
+- **TensorFlow**: 2.12.0 or later
+- **Hardware**: Cloud TPU v4/v5p/v6e or NVIDIA GPU with CUDA support
+
+## Quick install
+
+<Tabs>
+  <Tab title="Cloud TPU">
+    <Steps>
+      <Step title="Create a TPU VM">
+        Create and SSH into a single-host TPU VM:
+        
+        ```bash
+        gcloud compute tpus tpu-vm create maxdiffusion-vm \
+          --zone=us-central2-b \
+          --accelerator-type=v6e-8 \
+          --version=v2-alpha-tpuv6e
+        
+        gcloud compute tpus tpu-vm ssh maxdiffusion-vm --zone=us-central2-b
+        ```
+        
+        <Info>
+          For TPU v6e (Trillium), use the `v2-alpha-tpuv6e` VM image which includes Ubuntu 22.04, Python 3.12, and TensorFlow 2.12+.
+        </Info>
+      </Step>
+      
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/AI-Hypercomputer/maxdiffusion.git
+        cd maxdiffusion
+        ```
+      </Step>
+      
+      <Step title="Run setup script">
+        Install MaxDiffusion and dependencies:
+        
+        ```bash
+        bash setup.sh MODE=stable DEVICE=tpu
+        ```
+        
+        <Note>
+          If using Python 3.12+ for the first time, you may need to run the setup script three times to complete the installation.
+        </Note>
+      </Step>
+      
+      <Step title="Activate virtual environment">
+        ```bash
+        venv_name="maxdiffusion_venv"
+        source ~/$venv_name/bin/activate
+        ```
+      </Step>
+      
+      <Step title="Verify installation">
+        Test your installation by generating an image:
+        
+        ```bash
+        python -m src.maxdiffusion.generate \
+          src/maxdiffusion/configs/base21.yml \
+          run_name="test" \
+          prompt="A magical castle in the middle of a forest"
+        ```
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="GPU">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/AI-Hypercomputer/maxdiffusion.git
+        cd maxdiffusion
+        ```
+      </Step>
+      
+      <Step title="Install JAX for GPU">
+        ```bash
+        pip install -U "jax[cuda12]"
+        ```
+      </Step>
+      
+      <Step title="Install MaxDiffusion">
+        ```bash
+        pip install -r requirements.txt
+        pip install .
+        ```
+      </Step>
+      
+      <Step title="Install Transformer Engine (optional)">
+        For fused attention on GPU:
+        
+        ```bash
+        pip install --upgrade torch torchvision
+        pip install "transformer_engine[jax]"
+        ```
+      </Step>
+      
+      <Step title="Verify installation">
+        Test with SDXL on GPU:
+        
+        ```bash
+        python -m src.maxdiffusion.generate_sdxl \
+          src/maxdiffusion/configs/base_xl.yml \
+          hardware=gpu \
+          run_name="test"
+        ```
+      </Step>
+    </Steps>
+    
+    <Warning>
+      GPU support is not actively maintained. For production workloads, we recommend Cloud TPUs.
+    </Warning>
+  </Tab>
+  
+  <Tab title="Local (CPU)">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/AI-Hypercomputer/maxdiffusion.git
+        cd maxdiffusion
+        ```
+      </Step>
+      
+      <Step title="Create virtual environment">
+        ```bash
+        python3 -m venv maxdiffusion_venv
+        source maxdiffusion_venv/bin/activate
+        ```
+      </Step>
+      
+      <Step title="Install dependencies">
+        ```bash
+        pip install -r requirements.txt
+        pip install .
+        ```
+      </Step>
+    </Steps>
+    
+    <Warning>
+      CPU installation is primarily for development and testing. Training and inference will be significantly slower than on TPU or GPU.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## TPU VM images
+
+For different TPU generations, use the appropriate VM image:
+
+| TPU Type | Recommended VM Image | Zones |
+|----------|---------------------|-------|
+| v6e-8 (Trillium) | `v2-alpha-tpuv6e` | us-central2-b, us-south1-a |
+| v5p-8 | `v2-alpha-tpuv5-lite` | us-east5-a, us-west4-a |
+| v4-8 | `tpu-ubuntu2204-base` | us-central2-b, europe-west4-a |
+
+<Info>
+  See the [Cloud TPU regions and zones documentation](https://cloud.google.com/tpu/docs/regions-zones) for the full list of available zones.
+</Info>
+
+## Development installation
+
+For contributing to MaxDiffusion or modifying the source code:
+
+```bash
+git clone https://github.com/AI-Hypercomputer/maxdiffusion.git
+cd maxdiffusion
+
+# Install in editable mode
+pip install -e .
+
+# Install development dependencies
+pip install pytest pylint pyink
+```
+
+## Optional dependencies
+
+### For training
+
+```bash
+pip install accelerate datasets tensorboard
+```
+
+### For video models
+
+```bash
+pip install opencv-python
+apt-get update && apt-get install ffmpeg libsm6 libxext6 -y
+```
+
+### For testing
+
+```bash
+pip install pytest pytest-timeout pytest-xdist
+```
+
+## Troubleshooting
+
+<Accordion title="ImportError: cannot import JAX">
+  Make sure JAX is installed for your target device:
+  
+  ```bash
+  # For TPU
+  pip install jax[tpu] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+  
+  # For GPU
+  pip install -U "jax[cuda12]"
+  ```
+</Accordion>
+
+<Accordion title="Python version mismatch">
+  MaxDiffusion requires Python 3.12+. Check your version:
+  
+  ```bash
+  python --version
+  ```
+  
+  If using an older version, create a new virtual environment with Python 3.12.
+</Accordion>
+
+<Accordion title="Out of disk space during installation">
+  MaxDiffusion models can be large. Consider attaching an external disk:
+  
+  ```bash
+  # Create and attach a 500GB disk
+  gcloud compute disks create maxdiffusion-disk \
+    --size=500GB \
+    --zone=us-central2-b
+  
+  # Attach to your TPU VM
+  # See: https://cloud.google.com/tpu/docs/attach-durable-block-storage
+  ```
+</Accordion>
+
+<Accordion title="Setup script fails on first run">
+  For Python 3.12+ virtual environments, you may need to run the setup script multiple times:
+  
+  ```bash
+  bash setup.sh MODE=stable DEVICE=tpu
+  bash setup.sh MODE=stable DEVICE=tpu
+  bash setup.sh MODE=stable DEVICE=tpu
+  ```
+</Accordion>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Generate your first image
+  </Card>
+  <Card title="Single host deployment" icon="computer" href="/deployment/single-host">
+    Set up local development
+  </Card>
+  <Card title="Multi-host deployment" icon="network-wired" href="/deployment/multihost">
+    Scale to TPU Pods
+  </Card>
+  <Card title="Training guide" icon="graduation-cap" href="/training/overview">
+    Start training models
+  </Card>
+</CardGroup>

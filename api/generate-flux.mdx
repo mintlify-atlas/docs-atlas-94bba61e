@@ -1,0 +1,256 @@
+---
+title: 'generate_flux.py'
+description: 'Flux inference script for state-of-the-art image generation'
+---
+
+## Overview
+
+The `generate_flux.py` script provides inference for Flux models (dev and schnell). Flux represents a significant advancement in diffusion models with improved quality and speed. The script supports LoRA loading, multiple sharding strategies, and optimized flash attention.
+
+## Usage
+
+### Flux Schnell (fast)
+
+```bash
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_schnell.yml \
+  jax_cache_dir=/tmp/cache_dir \
+  run_name=flux_test \
+  output_dir=/tmp/ \
+  prompt="photograph of an electronics chip in the shape of a race car with trillium written on its side" \
+  per_device_batch_size=1
+```
+
+### Flux Dev (high quality)
+
+```bash
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  jax_cache_dir=/tmp/cache_dir \
+  run_name=flux_test \
+  output_dir=/tmp/ \
+  prompt="photograph of an electronics chip in the shape of a race car with trillium written on its side" \
+  per_device_batch_size=1
+```
+
+### With LoRA
+
+```bash
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  prompt='A cute corgi lives in a house made out of sushi, anime' \
+  num_inference_steps=28 \
+  ici_data_parallelism=1 \
+  ici_fsdp_parallelism=-1 \
+  split_head_dim=True \
+  lora_config='{"lora_model_name_or_path" : ["/path/to/anime_lora.safetensors"], "weight_name" : ["anime_lora.safetensors"], "adapter_name" : ["anime"], "scale": [0.8], "from_pt": ["true"]}'
+```
+
+### FSDP sharding (keeps all components in HBM)
+
+```bash
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_schnell.yml \
+  ici_data_parallelism=1 \
+  ici_fsdp_parallelism=-1 \
+  offload_encoders=False
+```
+
+### GPU with fused attention
+
+```bash
+NVTE_FUSED_ATTN=1 HF_HUB_ENABLE_HF_TRANSFER=1 \
+python src/maxdiffusion/generate_flux.py \
+  src/maxdiffusion/configs/base_flux_dev.yml \
+  prompt='A cute corgi lives in a house made out of sushi, anime' \
+  num_inference_steps=28 \
+  split_head_dim=True \
+  per_device_batch_size=1 \
+  attention="cudnn_flash_te" \
+  hardware=gpu
+```
+
+## Configuration parameters
+
+### Model parameters
+
+<ParamField path="pretrained_model_name_or_path" type="string" default="black-forest-labs/FLUX.1-dev">
+  Base model path. Use `black-forest-labs/FLUX.1-dev` or `black-forest-labs/FLUX.1-schnell`.
+</ParamField>
+
+<ParamField path="flux_name" type="string" default="flux-dev">
+  Flux variant identifier. Options: `flux-dev`, `flux-schnell`.
+</ParamField>
+
+<ParamField path="clip_model_name_or_path" type="string" default="ariG23498/clip-vit-large-patch14-text-flax">
+  CLIP text encoder model path.
+</ParamField>
+
+<ParamField path="t5xxl_model_name_or_path" type="string" default="ariG23498/t5-v1-1-xxl-flax">
+  T5-XXL text encoder model path.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Primary text prompt for image generation.
+</ParamField>
+
+<ParamField path="prompt_2" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Secondary prompt (can be same as primary or different for prompt blending).
+</ParamField>
+
+<ParamField path="num_inference_steps" type="integer" default={50}>
+  Number of denoising steps. Flux-dev typically uses 28-50, schnell uses 4.
+</ParamField>
+
+<ParamField path="guidance_scale" type="float" default={3.5}>
+  Guidance scale for prompt adherence. Flux works well with lower values (3-5).
+</ParamField>
+
+<ParamField path="resolution" type="integer" default={1024}>
+  Output image resolution. Flux is optimized for 1024x1024.
+</ParamField>
+
+<ParamField path="max_sequence_length" type="integer" default={512}>
+  Maximum sequence length for text encoders.
+</ParamField>
+
+### Flow matching parameters
+
+<ParamField path="time_shift" type="boolean" default={true}>
+  Enable time shifting schedule to favor high timesteps for higher signal images.
+</ParamField>
+
+<ParamField path="base_shift" type="float" default={0.5}>
+  Base shift parameter for time schedule.
+</ParamField>
+
+<ParamField path="max_shift" type="float" default={1.15}>
+  Maximum shift parameter for time schedule.
+</ParamField>
+
+### Performance parameters
+
+<ParamField path="weights_dtype" type="string" default="bfloat16">
+  Data type for model weights. Always use `bfloat16` for Flux.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for activations. Always use `bfloat16` for Flux.
+</ParamField>
+
+<ParamField path="attention" type="string" default="flash">
+  Attention implementation. Options: `flash` (TPU), `cudnn_flash_te` (GPU), `dot_product`.
+</ParamField>
+
+<ParamField path="split_head_dim" type="boolean" default={true}>
+  Split attention head dimensions for better parallelization.
+</ParamField>
+
+<ParamField path="offload_encoders" type="boolean" default={true}>
+  Offload T5 encoder to CPU after encoding to save memory.
+</ParamField>
+
+<ParamField path="flash_block_sizes" type="object" default={{}}>
+  Custom block sizes for flash attention. Use optimized values for TPU v6e:
+  ```yaml
+  flash_block_sizes: {
+    "block_q": 1536,
+    "block_kv_compute": 1536,
+    "block_kv": 1536,
+    "block_q_dkv": 1536,
+    "block_kv_dkv": 1536,
+    "block_kv_dkv_compute": 1536,
+    "block_q_dq": 1536,
+    "block_kv_dq": 1536
+  }
+  ```
+</ParamField>
+
+### LoRA parameters
+
+<ParamField path="lora_config" type="object">
+  Configuration for loading LoRA adapters. Supports multiple LoRAs.
+  
+  **Properties:**
+  - `lora_model_name_or_path` (array): Paths to LoRA files
+  - `weight_name` (array): Filenames of LoRA weights
+  - `adapter_name` (array): Unique adapter names
+  - `scale` (array): Scale factors (0.0-1.0)
+  - `from_pt` (array): Load from PyTorch format
+  
+  **Example (multiple LoRAs):**
+  ```json
+  {
+    "lora_model_name_or_path": ["/path/anime.safetensors", "/path/photo.safetensors"],
+    "weight_name": ["anime.safetensors", "photo.safetensors"],
+    "adapter_name": ["anime", "realistic"],
+    "scale": [0.6, 0.6],
+    "from_pt": ["true", "true"]
+  }
+  ```
+</ParamField>
+
+### Parallelism parameters
+
+<ParamField path="ici_data_parallelism" type="integer" default={-1}>
+  Data parallelism for DDP strategy. Use -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_fsdp_parallelism" type="integer" default={1}>
+  FSDP parallelism. Set to -1 to shard model across devices (keeps everything in HBM).
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="integer" default={1}>
+  Batch size per device.
+</ParamField>
+
+### System parameters
+
+<ParamField path="run_name" type="string" required>
+  Unique run identifier.
+</ParamField>
+
+<ParamField path="output_dir" type="string" default="">
+  Output directory for generated images.
+</ParamField>
+
+<ParamField path="seed" type="integer" default={0}>
+  Random seed for reproducibility.
+</ParamField>
+
+<ParamField path="jax_cache_dir" type="string" default="">
+  JAX compilation cache directory.
+</ParamField>
+
+<ParamField path="hardware" type="string" default="tpu">
+  Hardware type. Options: `tpu`, `gpu`.
+</ParamField>
+
+## Output
+
+Images are saved with the naming pattern `flux_{i}.png`.
+
+## Performance data
+
+Expected results on 1024x1024 images with flash attention and bfloat16:
+
+| Model | Accelerator | Sharding | Batch Size | Steps | Time (seconds) |
+|-------|-------------|----------|------------|-------|----------------|
+| Flux-dev | v4-8 | DDP | 4 | 28 | 23 |
+| Flux-schnell | v4-8 | DDP | 4 | 4 | 2.2 |
+| Flux-dev | v6e-4 | DDP | 4 | 28 | 5.5 |
+| Flux-schnell | v6e-4 | DDP | 4 | 4 | 0.8 |
+| Flux-schnell | v6e-4 | FSDP | 4 | 4 | 1.2 |
+
+## Implementation details
+
+Flux uses a unique architecture:
+- Dual text encoders (CLIP and T5-XXL) for rich text understanding
+- Flow matching instead of traditional diffusion
+- Transformer-based architecture with rotary positional embeddings
+- Packing-based latent representation
+- Time shift scheduling for improved quality
+
+See source: `~/workspace/source/src/maxdiffusion/generate_flux.py:1`

@@ -1,0 +1,154 @@
+---
+title: 'generate.py'
+description: 'Stable Diffusion 2.x inference script for generating images'
+---
+
+## Overview
+
+The `generate.py` script provides inference capabilities for Stable Diffusion 2.x models (SD 2 base and SD 2.1). It supports single and multi-host deployment with JAX sharding annotations.
+
+## Usage
+
+### Basic command
+
+```bash
+python -m src.maxdiffusion.generate \
+  src/maxdiffusion/configs/base_2_base.yml \
+  run_name="my_run"
+```
+
+### With custom checkpoint
+
+```bash
+python -m src.maxdiffusion.generate \
+  src/maxdiffusion/configs/base_2_base.yml \
+  run_name="my_run" \
+  pretrained_model_name_or_path=<your_saved_checkpoint_path> \
+  from_pt=False \
+  attention=dot_product
+```
+
+## Configuration parameters
+
+### Model parameters
+
+<ParamField path="pretrained_model_name_or_path" type="string" default="stabilityai/stable-diffusion-2-1">
+  Path or identifier for the pretrained model. Use `stabilityai/stable-diffusion-2-base` for SD 2 base or `stabilityai/stable-diffusion-2-1` for SD 2.1.
+</ParamField>
+
+<ParamField path="revision" type="string" default="bf16">
+  Model revision to use from HuggingFace.
+</ParamField>
+
+<ParamField path="from_pt" type="boolean" default={false}>
+  Set to `true` to load weights from PyTorch format.
+</ParamField>
+
+<ParamField path="unet_checkpoint" type="string" default="">
+  Path to a specific UNet checkpoint to load.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string" default="A magical castle in the middle of a forest, artistic drawing">
+  Text prompt describing the image to generate.
+</ParamField>
+
+<ParamField path="negative_prompt" type="string" default="purple, red">
+  Negative prompt to guide what should not appear in the image.
+</ParamField>
+
+<ParamField path="num_inference_steps" type="integer" default={30}>
+  Number of denoising steps. Higher values generally produce better quality but take longer.
+</ParamField>
+
+<ParamField path="guidance_scale" type="float" default={7.5}>
+  Classifier-free guidance scale. Higher values produce images more closely aligned with the prompt.
+</ParamField>
+
+<ParamField path="guidance_rescale" type="float" default={0.0}>
+  Guidance rescale factor based on [Common Diffusion Noise Schedules](https://arxiv.org/pdf/2305.08891.pdf). Helps solve overexposure when terminal SNR approaches zero. Recommended value is 0.7 with guidance_scale=7.5.
+</ParamField>
+
+<ParamField path="resolution" type="integer" default={768}>
+  Output image resolution in pixels (width and height).
+</ParamField>
+
+### Performance parameters
+
+<ParamField path="weights_dtype" type="string" default="float32">
+  Data type for model weights. Options: `float32`, `bfloat16`, `float16`.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for layer activations. Options: `float32`, `bfloat16`, `float16`.
+</ParamField>
+
+<ParamField path="attention" type="string" default="dot_product">
+  Attention mechanism to use. Options: `dot_product`, `flash`.
+</ParamField>
+
+<ParamField path="precision" type="string" default="DEFAULT">
+  Matmul and conv precision. Options: `DEFAULT`, `HIGH`, `HIGHEST`. FP32 with HIGHEST provides best precision at the cost of speed.
+</ParamField>
+
+### Parallelism parameters
+
+<ParamField path="ici_data_parallelism" type="integer" default={-1}>
+  Data parallelism across ICI devices. Use -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_fsdp_parallelism" type="integer" default={1}>
+  FSDP parallelism across ICI devices.
+</ParamField>
+
+<ParamField path="ici_tensor_parallelism" type="integer" default={1}>
+  Tensor parallelism across ICI devices.
+</ParamField>
+
+<ParamField path="dcn_data_parallelism" type="integer" default={-1}>
+  Data parallelism across DCN slices. Use -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="integer" default={1}>
+  Batch size per device.
+</ParamField>
+
+### System parameters
+
+<ParamField path="run_name" type="string" required>
+  Unique identifier for the inference run.
+</ParamField>
+
+<ParamField path="output_dir" type="string" default="sd-model-finetuned">
+  Directory to save generated images.
+</ParamField>
+
+<ParamField path="seed" type="integer" default={0}>
+  Random seed for reproducible generation.
+</ParamField>
+
+<ParamField path="jax_cache_dir" type="string" default="">
+  Directory for JAX compilation cache.
+</ParamField>
+
+<ParamField path="hardware" type="string" default="tpu">
+  Hardware type. Options: `tpu`, `gpu`.
+</ParamField>
+
+## Output
+
+Generated images are saved as PNG files in the current directory with the naming pattern `image_{i}.png`, where `i` is the image index in the batch.
+
+## Implementation details
+
+The script:
+1. Loads the Stable Diffusion pipeline and weights
+2. Creates inference states for UNet, VAE, and text encoder
+3. Sets up DDIM scheduler for the denoising process
+4. Tokenizes and encodes the text prompts
+5. Runs the denoising loop for the specified number of steps
+6. Decodes latents to images using the VAE
+7. Saves images to disk
+
+See source: `~/workspace/source/src/maxdiffusion/generate.py`

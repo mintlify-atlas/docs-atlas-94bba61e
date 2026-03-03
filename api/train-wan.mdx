@@ -1,0 +1,578 @@
+---
+title: train_wan.py
+description: Train Wan 2.1 and 2.2 text-to-video models on TPU
+---
+
+## Overview
+
+The `train_wan.py` script trains Wan text-to-video models using the MaxDiffusion framework. It supports Wan 2.1 and 2.2 models with advanced features including gradient checkpointing, flash attention, and synthetic data generation.
+
+## Command-line usage
+
+```bash
+python src/maxdiffusion/train_wan.py src/maxdiffusion/configs/base_wan_14b.yml [OPTIONS]
+```
+
+### Basic example (single VM)
+
+```bash
+export LIBTPU_INIT_ARGS='--xla_tpu_enable_async_collective_fusion_fuse_all_gather=true \
+--xla_tpu_megacore_fusion_allow_ags=false \
+--xla_enable_async_collective_permute=true \
+--xla_tpu_enable_ag_backward_pipelining=true \
+--xla_tpu_enable_data_parallel_all_reduce_opt=true \
+--xla_tpu_data_parallel_opt_different_sized_ops=true \
+--xla_tpu_enable_async_collective_fusion=true \
+--xla_tpu_enable_async_collective_fusion_multiple_steps=true \
+--xla_tpu_overlap_compute_collective_tc=true \
+--xla_enable_async_all_gather=true \
+--xla_tpu_scoped_vmem_limit_kib=65536'
+
+HF_HUB_CACHE=/mnt/disks/external_disk/maxdiffusion_hf_cache/ \
+python src/maxdiffusion/train_wan.py \
+  src/maxdiffusion/configs/base_wan_14b.yml \
+  attention='flash' \
+  weights_dtype=bfloat16 \
+  activations_dtype=bfloat16 \
+  guidance_scale=5.0 \
+  flow_shift=5.0 \
+  fps=16 \
+  skip_jax_distributed_system=False \
+  run_name=wan-training \
+  output_dir=gs://your-bucket/wan/ \
+  train_data_dir=gs://your-bucket/dataset/train/ \
+  load_tfrecord_cached=True \
+  height=1280 \
+  width=720 \
+  num_frames=81 \
+  num_inference_steps=50 \
+  max_train_steps=1000 \
+  per_device_batch_size=0.25 \
+  ici_data_parallelism=1 \
+  ici_fsdp_parallelism=4 \
+  ici_tensor_parallelism=1
+```
+
+## Configuration parameters
+
+### Run configuration
+
+<ParamField path="run_name" type="string" required>
+  Name for this training run. Used for organizing outputs and metrics.
+</ParamField>
+
+<ParamField path="base_output_directory" type="string">
+  GCS bucket path for outputs (e.g., `gs://my-bucket/`). Checkpoints and metrics will be saved here.
+</ParamField>
+
+<ParamField path="output_dir" type="string" default="sdxl-model-finetuned">
+  Local or GCS directory for model outputs.
+</ParamField>
+
+### Model configuration
+
+<ParamField path="pretrained_model_name_or_path" type="string" default="Wan-AI/Wan2.1-T2V-14B-Diffusers">
+  HuggingFace model identifier or local path to pretrained Wan model.
+</ParamField>
+
+<ParamField path="model_name" type="string" default="wan2.1">
+  Wan model version identifier.
+</ParamField>
+
+<ParamField path="model_type" type="string" default="T2V">
+  Model type. Options: `T2V` (text-to-video), `I2V` (image-to-video).
+</ParamField>
+
+<ParamField path="wan_transformer_pretrained_model_name_or_path" type="string" default="">
+  Override the transformer from `pretrained_model_name_or_path` with a different checkpoint.
+</ParamField>
+
+<ParamField path="weights_dtype" type="string" default="bfloat16">
+  Data type for model weights. Options: `float32`, `bfloat16`.
+</ParamField>
+
+<ParamField path="activations_dtype" type="string" default="bfloat16">
+  Data type for layer activations. Options: `float32`, `bfloat16`.
+</ParamField>
+
+<ParamField path="precision" type="string" default="DEFAULT">
+  JAX precision for matmul and conv operations. Options: `DEFAULT`, `HIGH`, `HIGHEST`.
+</ParamField>
+
+<ParamField path="from_pt" type="boolean" default={true}>
+  Load weights from PyTorch format.
+</ParamField>
+
+<ParamField path="scan_layers" type="boolean" default={true}>
+  Use jax.lax.scan for transformer layers to reduce compilation memory.
+</ParamField>
+
+<ParamField path="replicate_vae" type="boolean" default={false}>
+  Replicate VAE across devices instead of using model's sharding annotations.
+</ParamField>
+
+### Attention configuration
+
+<ParamField path="attention" type="string" default="flash">
+  Attention mechanism to use. Options: `dot_product`, `flash`, `cudnn_flash_te`, `ring`.
+</ParamField>
+
+<ParamField path="split_head_dim" type="boolean" default={true}>
+  Whether to split attention head dimensions for sharding.
+</ParamField>
+
+<ParamField path="attention_sharding_uniform" type="boolean" default={true}>
+  Use uniform sequence sharding for both self and cross attention.
+</ParamField>
+
+<ParamField path="mask_padding_tokens" type="boolean" default={true}>
+  Pass segment IDs to attention to avoid attending to padding tokens.
+</ParamField>
+
+<ParamField path="flash_min_seq_length" type="number" default={0}>
+  Minimum sequence length to use flash attention.
+</ParamField>
+
+<ParamField path="flash_block_sizes" type="object">
+  Custom block sizes for flash attention. Default for v5p:
+  ```yaml
+  flash_block_sizes: {
+    "block_q" : 512,
+    "block_kv_compute" : 512,
+    "block_kv" : 512,
+    "block_q_dkv" : 512,
+    "block_kv_dkv" : 512,
+    "block_kv_dkv_compute" : 512,
+    "block_q_dq" : 512,
+    "block_kv_dq" : 512,
+    "use_fused_bwd_kernel": False
+  }
+  ```
+  For v6e (Trillium), use larger blocks like 3024.
+</ParamField>
+
+### Training hyperparameters
+
+<ParamField path="learning_rate" type="number" default={1e-5}>
+  Learning rate for the optimizer.
+</ParamField>
+
+<ParamField path="scale_lr" type="boolean" default={false}>
+  Scale learning rate by the number of GPUs/TPUs and batch size.
+</ParamField>
+
+<ParamField path="max_train_steps" type="number" default={1500}>
+  Maximum number of training steps. Takes priority over `num_train_epochs`.
+</ParamField>
+
+<ParamField path="num_train_epochs" type="number" default={1}>
+  Number of training epochs.
+</ParamField>
+
+<ParamField path="per_device_batch_size" type="number" default={1.0}>
+  Batch size per device. Can be fractional (e.g., 0.25) but must multiply to a whole number across devices.
+</ParamField>
+
+<ParamField path="global_batch_size" type="number" default={0}>
+  If non-zero, override global batch size. If not evenly divisible by device count, use FSDP sharding.
+</ParamField>
+
+<ParamField path="warmup_steps_fraction" type="number" default={0.1}>
+  Fraction of total steps to use for learning rate warmup.
+</ParamField>
+
+<ParamField path="seed" type="number" default={0}>
+  Random seed for reproducibility.
+</ParamField>
+
+### Optimizer parameters
+
+<ParamField path="adam_b1" type="number" default={0.9}>
+  Exponential decay rate for first moment estimates.
+</ParamField>
+
+<ParamField path="adam_b2" type="number" default={0.999}>
+  Exponential decay rate for second moment estimates.
+</ParamField>
+
+<ParamField path="adam_eps" type="number" default={1e-8}>
+  Small constant for numerical stability.
+</ParamField>
+
+<ParamField path="adam_weight_decay" type="number" default={0}>
+  Weight decay coefficient for AdamW optimizer.
+</ParamField>
+
+<ParamField path="max_grad_norm" type="number" default={1.0}>
+  Maximum gradient norm for gradient clipping.
+</ParamField>
+
+<ParamField path="save_optimizer" type="boolean" default={false}>
+  Save optimizer state in checkpoints.
+</ParamField>
+
+### Gradient checkpointing (remat)
+
+<ParamField path="remat_policy" type="string" default="NONE">
+  Gradient checkpoint policy. Options:
+  - `NONE`: No gradient checkpointing
+  - `FULL`: Full gradient checkpointing (minimum memory)
+  - `MATMUL_WITHOUT_BATCH`: Checkpoint matmul ops without batch dimension
+  - `OFFLOAD_MATMUL_WITHOUT_BATCH`: Same as above but offload instead of recompute
+  - `CUSTOM`: Use custom names from `names_which_can_be_saved` and `names_which_can_be_offloaded`
+</ParamField>
+
+<ParamField path="names_which_can_be_saved" type="array" default={[]}>
+  For CUSTOM remat policy: list of operation names to save. Options include: `attn_output`, `query_proj`, `key_proj`, `value_proj`, `xq_out`, `xk_out`, `ffn_activation`.
+</ParamField>
+
+<ParamField path="names_which_can_be_offloaded" type="array" default={[]}>
+  For CUSTOM remat policy: list of operation names to offload.
+</ParamField>
+
+<ParamField path="dropout" type="number" default={0.1}>
+  Dropout rate for training.
+</ParamField>
+
+### Dataset configuration
+
+<ParamField path="dataset_name" type="string" default="diffusers/pokemon-gpt4-captions">
+  HuggingFace dataset identifier.
+</ParamField>
+
+<ParamField path="train_data_dir" type="string" required>
+  GCS or local path to TFRecord training data.
+</ParamField>
+
+<ParamField path="train_split" type="string" default="train">
+  Dataset split to use for training.
+</ParamField>
+
+<ParamField path="dataset_type" type="string" default="tfrecord">
+  Dataset format type. Options: `tfrecord`, `hf`, `tf`, `grain`, `synthetic`.
+</ParamField>
+
+<ParamField path="load_tfrecord_cached" type="boolean" default={true}>
+  Load preprocessed TFRecord files.
+</ParamField>
+
+<ParamField path="dataset_save_location" type="string" default="">
+  Path to save or load cached dataset.
+</ParamField>
+
+<ParamField path="image_column" type="string" default="image">
+  Name of the image column in the dataset.
+</ParamField>
+
+<ParamField path="caption_column" type="string" default="text">
+  Name of the caption column in the dataset.
+</ParamField>
+
+<ParamField path="resolution" type="number" default={1024}>
+  Spatial resolution for video frames.
+</ParamField>
+
+<ParamField path="height" type="number" default={480}>
+  Video frame height.
+</ParamField>
+
+<ParamField path="width" type="number" default={832}>
+  Video frame width.
+</ParamField>
+
+<ParamField path="num_frames" type="number" default={81}>
+  Number of frames in video.
+</ParamField>
+
+<ParamField path="enable_data_shuffling" type="boolean" default={true}>
+  Shuffle the dataset during training.
+</ParamField>
+
+### Synthetic data configuration
+
+<ParamField path="synthetic_num_samples" type="number">
+  For `dataset_type='synthetic'`: number of synthetic samples. Set to null for infinite samples.
+</ParamField>
+
+<ParamField path="synthetic_override_height" type="number">
+  Override height for synthetic data.
+</ParamField>
+
+<ParamField path="synthetic_override_width" type="number">
+  Override width for synthetic data.
+</ParamField>
+
+<ParamField path="synthetic_override_num_frames" type="number">
+  Override number of frames for synthetic data.
+</ParamField>
+
+<ParamField path="synthetic_override_max_sequence_length" type="number">
+  Override max sequence length for synthetic data.
+</ParamField>
+
+### Parallelism and sharding
+
+<ParamField path="hardware" type="string" default="tpu">
+  Hardware type. Options: `tpu`, `gpu`.
+</ParamField>
+
+<ParamField path="mesh_axes" type="array" default={["data", "fsdp", "context", "tensor"]}>
+  Logical mesh axes for parallelism.
+</ParamField>
+
+<ParamField path="dcn_data_parallelism" type="number" default={1}>
+  Data parallelism across DCN.
+</ParamField>
+
+<ParamField path="dcn_fsdp_parallelism" type="number" default={1}>
+  FSDP parallelism across DCN.
+</ParamField>
+
+<ParamField path="dcn_context_parallelism" type="number" default={-1}>
+  Context (sequence) parallelism across DCN. -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="dcn_tensor_parallelism" type="number" default={1}>
+  Tensor parallelism across DCN.
+</ParamField>
+
+<ParamField path="ici_data_parallelism" type="number" default={1}>
+  Data parallelism within ICI.
+</ParamField>
+
+<ParamField path="ici_fsdp_parallelism" type="number" default={1}>
+  FSDP parallelism within ICI. In Wan 2.1, this axis is used for sequence parallelism.
+</ParamField>
+
+<ParamField path="ici_context_parallelism" type="number" default={-1}>
+  Context parallelism within ICI. -1 for auto-sharding.
+</ParamField>
+
+<ParamField path="ici_tensor_parallelism" type="number" default={1}>
+  Tensor (head) parallelism within ICI. For Wan 2.1, must evenly divide 40 heads.
+</ParamField>
+
+### Checkpointing
+
+<ParamField path="checkpoint_every" type="number" default={-1}>
+  Save checkpoint every N samples. -1 disables checkpointing.
+</ParamField>
+
+<ParamField path="checkpoint_dir" type="string" default="">
+  Directory to save checkpoints.
+</ParamField>
+
+<ParamField path="enable_single_replica_ckpt_restoring" type="boolean" default={false}>
+  Enable one replica to read checkpoint and broadcast to others.
+</ParamField>
+
+### Evaluation
+
+<ParamField path="eval_every" type="number" default={-1}>
+  Evaluate model every N steps. -1 disables evaluation during training.
+</ParamField>
+
+<ParamField path="eval_data_dir" type="string" default="">
+  Path to evaluation dataset with timesteps.
+</ParamField>
+
+<ParamField path="enable_generate_video_for_eval" type="boolean" default={false}>
+  Generate videos during evaluation. Increases TPU memory usage.
+</ParamField>
+
+<ParamField path="enable_eval_timesteps" type="boolean" default={false}>
+  Enable timestep-based evaluation as described in Scaling Rectified Flow Transformers paper.
+</ParamField>
+
+<ParamField path="timesteps_list" type="array" default={[125, 250, 375, 500, 625, 750, 875]}>
+  List of timesteps to evaluate.
+</ParamField>
+
+<ParamField path="num_eval_samples" type="number" default={420}>
+  Number of samples to use for evaluation.
+</ParamField>
+
+<ParamField path="eval_max_number_of_samples_in_bucket" type="number" default={60}>
+  Maximum samples per timestep bucket for evaluation.
+</ParamField>
+
+<ParamField path="enable_ssim" type="boolean" default={false}>
+  Enable SSIM metric calculation during evaluation.
+</ParamField>
+
+### Metrics and logging
+
+<ParamField path="write_metrics" type="boolean" default={true}>
+  Save metrics such as loss and TFLOPS.
+</ParamField>
+
+<ParamField path="gcs_metrics" type="boolean" default={false}>
+  Write metrics to GCS.
+</ParamField>
+
+<ParamField path="log_period" type="number" default={100}>
+  Tensorboard flush period.
+</ParamField>
+
+### Profiling
+
+<ParamField path="enable_profiler" type="boolean" default={false}>
+  Enable JAX profiler.
+</ParamField>
+
+<ParamField path="skip_first_n_steps_for_profiler" type="number" default={5}>
+  Skip first N steps when profiling to exclude compilation.
+</ParamField>
+
+<ParamField path="profiler_steps" type="number" default={10}>
+  Number of steps to profile.
+</ParamField>
+
+<ParamField path="enable_jax_named_scopes" type="boolean" default={false}>
+  Enable JAX named scopes for detailed profiling and debugging.
+</ParamField>
+
+### Generation parameters
+
+<ParamField path="prompt" type="string">
+  Prompt for test video generation during training.
+</ParamField>
+
+<ParamField path="negative_prompt" type="string">
+  Negative prompt for guidance.
+</ParamField>
+
+<ParamField path="guidance_scale" type="number" default={5.0}>
+  Classifier-free guidance scale.
+</ParamField>
+
+<ParamField path="flow_shift" type="number" default={3.0}>
+  Flow shift parameter for Wan models.
+</ParamField>
+
+<ParamField path="num_inference_steps" type="number" default={30}>
+  Number of denoising steps for test generation.
+</ParamField>
+
+<ParamField path="fps" type="number" default={16}>
+  Frames per second for generated videos.
+</ParamField>
+
+### LoRA configuration
+
+<ParamField path="enable_lora" type="boolean" default={false}>
+  Enable LoRA adapters for training or inference.
+</ParamField>
+
+<ParamField path="lora_config" type="object">
+  Configuration for LoRA adapters.
+  
+  - `rank`: List of LoRA ranks
+  - `lora_model_name_or_path`: List of LoRA model paths or HuggingFace repos
+  - `weight_name`: List of weight filenames
+  - `adapter_name`: List of adapter names
+  - `scale`: List of scaling factors
+  - `from_pt`: List of booleans indicating PyTorch format
+</ParamField>
+
+### Quantization
+
+<ParamField path="quantization" type="string" default="">
+  Quantization configuration.
+</ParamField>
+
+<ParamField path="use_qwix_quantization" type="boolean" default={false}>
+  Enable qwix quantization for Wan transformer.
+</ParamField>
+
+<ParamField path="weight_quantization_calibration_method" type="string" default="absmax">
+  Calibration method for weight quantization.
+</ParamField>
+
+<ParamField path="act_quantization_calibration_method" type="string" default="absmax">
+  Calibration method for activation quantization.
+</ParamField>
+
+<ParamField path="bwd_quantization_calibration_method" type="string" default="absmax">
+  Calibration method for backward pass quantization.
+</ParamField>
+
+<ParamField path="qwix_module_path" type="string" default=".*">
+  Regex pattern for modules to quantize with qwix.
+</ParamField>
+
+### TFRecord creation
+
+<ParamField path="tfrecords_dir" type="string" default="">
+  Output directory for TFRecord creation.
+</ParamField>
+
+<ParamField path="no_records_per_shard" type="number" default={0}>
+  Number of records per TFRecord shard.
+</ParamField>
+
+## Expected outputs
+
+### Training output
+
+During training, you'll see output like:
+```
+***** Running training *****
+Instantaneous batch size per device = 0.25
+Total train batch size (w. parallel & distributed) = 1
+Total optimization steps = 1000
+Calculated TFLOPs per pass: 4893.2719
+completed step: 0, seconds: 142.395, TFLOP/s/device: 34.364, loss: 0.270
+completed step: 1, seconds: 137.207, TFLOP/s/device: 35.664, loss: 0.144
+```
+
+### Checkpoints
+
+When `checkpoint_every` is set, checkpoints are saved to:
+```
+{base_output_directory}/{run_name}/checkpoints/
+```
+
+### Metrics
+
+Training metrics are saved to:
+```
+{base_output_directory}/{run_name}/metrics/
+```
+
+Metrics include:
+- Training loss
+- Learning rate
+- TFLOPS per device
+- Step time
+- Evaluation metrics (if enabled)
+
+### Tensorboard logs
+
+View with:
+```bash
+tensorboard --logdir=gs://your-bucket/{run_name}/tensorboard/
+```
+
+## Dataset preparation
+
+Before training, convert your dataset to TFRecords:
+
+```bash
+python src/maxdiffusion/data_preprocessing/wan_pusav1_to_tfrecords.py \
+  src/maxdiffusion/configs/base_wan_14b.yml \
+  train_data_dir=$HF_DATASET_DIR \
+  tfrecords_dir=$TFRECORDS_DATASET_DIR/train \
+  no_records_per_shard=10 \
+  enable_eval_timesteps=False
+```
+
+For evaluation dataset with timesteps:
+```bash
+python src/maxdiffusion/data_preprocessing/wan_pusav1_to_tfrecords.py \
+  src/maxdiffusion/configs/base_wan_14b.yml \
+  train_data_dir=$HF_DATASET_DIR \
+  tfrecords_dir=$TFRECORDS_DATASET_DIR/eval \
+  no_records_per_shard=10 \
+  enable_eval_timesteps=True
+```
